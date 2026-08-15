@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- No crawlable hints in the title — keep this page unlisted rather
+       than announced. Real access control still needs to happen at the
+       server/hosting level (see the security note below). -->
+  <title>OMEGA_TERM :: ACCESS</title>
+  <meta name="robots" content="noindex, nofollow">
+
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+  <div id="crt" class="crt-frame">
+    <div class="scanlines" aria-hidden="true"></div>
+    <div class="flicker-overlay" aria-hidden="true"></div>
+
+    <header id="site-header" class="site-header">
+      <p class="system-line" id="system-status">
+        SYS://OMEGA_TERM &nbsp;—&nbsp; STATUS: <span id="status-value" class="status-ok">RESTRICTED</span>
+      </p>
+      <h1 class="site-title">ACCESS_TERMINAL<span class="cursor-blink">_</span></h1>
+      <p class="site-subtitle">authorized personnel only // local session</p>
+    </header>
+
+    <main class="log-feed">
+
+      <!-- ==========================================================
+           LOGIN GATE
+           IMPORTANT — READ BEFORE SHIPPING THIS ANYWHERE PUBLIC:
+           This is a client-side password check, written in plain JS
+           that ships to the browser. Anyone can open dev tools, read
+           ADMIN_PASSWORD below, or just call showDashboard() directly
+           from the console. It is NOT real security — it only stops a
+           casual visitor from stumbling into the form, which is enough
+           for a personal ARG-style ease-of-use gate but nothing more.
+
+           For a real login, you'd want: a server-side check (a small
+           backend endpoint, or an auth provider like Supabase Auth /
+           Firebase Auth), a hashed password, and a session token —
+           not a password sitting in this file's source.
+           ========================================================== */
+           -->
+      <section id="login-box" class="login-box">
+        <p>ENTER PASSPHRASE TO CONTINUE</p>
+        <div class="form-group">
+          <input
+            type="password"
+            id="login-password"
+            class="terminal-input"
+            placeholder="••••••••"
+            autocomplete="off"
+          >
+        </div>
+        <div style="margin-top: 15px;">
+          <button type="button" id="login-submit" class="terminal-button">AUTHENTICATE</button>
+        </div>
+        <p id="login-error" class="login-error"></p>
+      </section>
+
+      <!-- ==========================================================
+           POST CREATION FORM
+           Hidden by default via .is-hidden. Revealed only after the
+           password check above passes. See the inline script at the 
+           bottom of this file for the logic.
+           ========================================================== -->
+      <section id="dashboard-panel" class="dashboard-panel is-hidden">
+
+        <p class="site-subtitle" style="margin-bottom: 20px;">
+          new entry // writes to the same local post storage main.js reads from
+        </p>
+
+        <form id="post-form">
+          <div class="form-group">
+            <label for="post-title">Entry Title</label>
+            <input
+              type="text"
+              id="post-title"
+              class="terminal-input"
+              placeholder="the basement doesn't echo right"
+              required
+            >
+          </div>
+
+          <div class="form-group">
+            <label for="post-body">Body Text</label>
+            <textarea
+              id="post-body"
+              class="terminal-textarea"
+              placeholder="Write the entry here. No length limit."
+              required
+            ></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="post-media">Media (optional)</label>
+            <input
+              type="text"
+              id="post-media"
+              class="terminal-input"
+              placeholder="img/photo.jpg, audio/clip.mp3, or a raw <iframe> embed"
+            >
+            <span class="form-hint">
+              Accepts an image path, an audio path, a pasted &lt;iframe&gt; embed code,
+              or any other link. js/main.js decides how to render it.
+            </span>
+          </div>
+
+          <!-- ==========================================================
+               ENCRYPTION LAYER CONTROLS
+               ========================================================== -->
+          <div class="form-group" style="border: 1px dashed var(--phosphor-dim); padding: 15px; margin-top: 10px; margin-bottom: 20px;">
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+              <input type="checkbox" id="post-is-locked" style="accent-color: var(--phosphor);">
+              <span>ENCRYPT THIS ENTRY (Requires Password to Read)</span>
+            </label>
+            
+            <div id="encryption-settings" style="margin-top: 15px; display: none;">
+              <label for="post-password">Decryption Key</label>
+              <input
+                type="text"
+                id="post-password"
+                class="terminal-input"
+                placeholder="e.g. projection_booth_1985"
+                autocomplete="off"
+              >
+              <span class="form-hint">This is the secret phrase players must find and type to read this specific log.</span>
+            </div>
+          </div>
+
+          <button type="submit" class="terminal-button">COMMIT ENTRY</button>
+          <p id="form-status" class="form-status"></p>
+        </form>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Shared data layer: gives us window.OmegaTerm.getPosts()/savePosts()
+       so this page reads and writes the exact same "database" as
+       index.html, instead of duplicating storage logic here. -->
+  <script src="../js/main.js" defer></script>
+
+  <script defer>
+    /* ======================================================================
+       Dashboard page logic: login gate + post-creation form.
+       Runs after js/main.js has defined window.OmegaTerm.
+       ====================================================================== */
+    document.addEventListener("DOMContentLoaded", function () {
+
+      // ------------------------------------------------------------
+      // LOGIN GATE
+      // See the big comment above the login-box markup for why this
+      // is intentionally NOT real security.
+      // ------------------------------------------------------------
+      const ADMIN_PASSWORD = "12.Gh02t!23*s0n*25_H3av3N_"; // change this before real use
+
+      const loginBox = document.getElementById("login-box");
+      const dashboardPanel = document.getElementById("dashboard-panel");
+      const passwordInput = document.getElementById("login-password");
+      const loginButton = document.getElementById("login-submit");
+      const loginError = document.getElementById("login-error");
+
+      function attemptLogin() {
+        if (passwordInput.value === ADMIN_PASSWORD) {
+          loginBox.classList.add("is-hidden");
+          dashboardPanel.classList.remove("is-hidden");
+          loginError.textContent = "";
+        } else {
+          loginError.textContent = "ACCESS DENIED — INCORRECT PASSPHRASE";
+          passwordInput.value = "";
+          passwordInput.focus();
+        }
+      }
+
+      loginButton.addEventListener("click", attemptLogin);
+
+      // Let Enter key submit the password too, not just the button click.
+      passwordInput.addEventListener("keydown", function (event) {
+        if (event.key === "Enter") {
+          attemptLogin();
+        }
+      });
+
+      // ------------------------------------------------------------
+      // DYNAMIC ENCRYPTION FORM VISIBILITY
+      // ------------------------------------------------------------
+      const isLockedCheckbox = document.getElementById("post-is-locked");
+      const encryptionSettings = document.getElementById("encryption-settings");
+      const postPasswordInput = document.getElementById("post-password");
+
+      isLockedCheckbox.addEventListener("change", function () {
+        if (this.checked) {
+          encryptionSettings.style.display = "block";
+          postPasswordInput.setAttribute("required", "true");
+        } else {
+          encryptionSettings.style.display = "none";
+          postPasswordInput.removeAttribute("required");
+          postPasswordInput.value = "";
+        }
+      });
+
+      // ------------------------------------------------------------
+      // POST CREATION FORM
+      // Builds a single post object from the form fields, appends it
+      // to whatever getPosts() currently returns, then writes the
+      // whole array back with savePosts(). index.html picks up the
+      // change automatically on its next load/refresh.
+      // ------------------------------------------------------------
+      const postForm = document.getElementById("post-form");
+      const formStatus = document.getElementById("form-status");
+
+      // Turns a JS Date into the site's YYYY.MM.DD stamp format.
+      function formatDateStamp(date) {
+        const yyyy = date.getFullYear();
+        const mm = String(date.getMonth() + 1).padStart(2, "0");
+        const dd = String(date.getDate()).padStart(2, "0");
+        return yyyy + "-" + mm + "-" + dd;
+      }
+
+      // Generates the next ENTRY_### id by scanning existing IDs and
+      // taking the highest + 1, so deleting a post never causes a
+      // collision (unlike a plain length + 1 counter).
+      function generateNextId(existingPosts) {
+        const maxNumber = existingPosts.reduce(function (max, post) {
+          const num = parseInt(post.id, 10);
+          return Number.isFinite(num) && num > max ? num : max;
+        }, 0);
+        const nextNumber = maxNumber + 1;
+        return String(nextNumber).padStart(3, "0");
+      }
+
+      postForm.addEventListener("submit", function (event) {
+        event.preventDefault(); // stop the default full-page form submit
+
+        const titleValue = document.getElementById("post-title").value.trim();
+        const bodyValue = document.getElementById("post-body").value.trim();
+        const mediaValue = document.getElementById("post-media").value.trim();
+        
+        // Grab values for encryption fields
+        const isLockedValue = isLockedCheckbox.checked;
+        const passwordValue = postPasswordInput.value.trim();
+
+        if (!titleValue || !bodyValue) {
+          formStatus.textContent = "TITLE AND BODY ARE REQUIRED";
+          formStatus.className = "form-status form-status--error";
+          return;
+        }
+
+        if (isLockedValue && !passwordValue) {
+          formStatus.textContent = "A DECRYPTION KEY IS REQUIRED FOR ENCRYPTED ENTRIES";
+          formStatus.className = "form-status form-status--error";
+          return;
+        }
+
+        // 1. READ current posts through the shared data layer (Updated to OmegaTerm).
+        const existingPosts = window.OmegaTerm.getPosts();
+
+        // 2. BUILD the new post object — field order mirrors the display
+        // hierarchy (id -> date -> title -> body) rendered by main.js.
+        const newPost = {
+          id: generateNextId(existingPosts),
+          date: formatDateStamp(new Date()),
+          title: titleValue,
+          body: bodyValue,
+          media: mediaValue || null,
+          isLocked: isLockedValue,
+          postPassword: isLockedValue ? passwordValue : null
+        };
+
+        // 3. WRITE the updated array back through the shared data layer (Updated to OmegaTerm).
+        existingPosts.push(newPost);
+        window.OmegaTerm.savePosts(existingPosts);
+
+        // 4. CONFIRM to the user and reset the form for the next entry.
+        formStatus.textContent = "ENTRY_" + newPost.id + " SAVED — refresh the log feed to view it.";
+        formStatus.className = "form-status form-status--ok";
+        postForm.reset();
+        
+        // Reset encryption panel visibility
+        encryptionSettings.style.display = "none";
+        postPasswordInput.removeAttribute("required");
+      });
+    });
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OMEGA_TERM :: TERMINAL LOG</title>
+
+  <!-- Local stylesheet only. No external fonts or libraries per project rules. -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ============================================================
+       TERMINAL FRAME
+       ============================================================ -->
+  <div id="crt" class="crt-frame">
+
+    <div class="scanlines" aria-hidden="true"></div>
+    <div class="flicker-overlay" aria-hidden="true"></div>
+    <div id="rain-dim" aria-hidden="true"></div>
+    <div id="rain-drops" aria-hidden="true"></div>
+    <div id="ascend-dim" aria-hidden="true"></div>
+    <div id="ascend-drops" aria-hidden="true"></div>
+    <div id="haunted-overlay" aria-hidden="true"></div>
+    <div id="demon-overlay" aria-hidden="true"></div>
+    <!-- Secret amijok overlay: a direct child of the CRT frame (like the other
+         full-screen overlays) so its z-index competes globally instead of being
+         trapped inside the header's stacking context. -->
+    <div id="amijok-overlay" aria-hidden="true"></div>
+
+    <!-- ============================================================
+         TERMINAL GATEWAY OVERLAY (Step 1 Entrance Lock)
+         ============================================================ -->
+    <div id="terminal-gateway" class="gateway-active">
+      <div class="terminal-box">
+        <div class="terminal-header">SYS://OMEGA_TERM - SECURE ACCESS REQUIRED</div>
+        <div class="terminal-body">
+          <p class="system-text">FATAL: LOG_STREAM IS ENCRYPTED.</p>
+          <p class="system-text">ESTABLISHING CONNECTION TO ARCHIVE...</p>
+          <p class="system-text">[UNAUTHORIZED ACCESS IS STRICTLY PROHIBITED]</p>
+          <br>
+          <div class="input-line">
+            <span class="prompt">ENTER ACCESS KEY:_</span>
+            <input type="password" id="gateway-password" autocomplete="off" autofocus>
+          </div>
+          <p id="gateway-error" class="error-text" style="display: none;">ACCESS DENIED. INVALID CREDENTIALS.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================
+         HEADER / SYSTEM STATUS BAR
+         ============================================================ -->
+    <header id="site-header" class="site-header">
+      <p class="system-line" id="system-status">
+        SYS://OMEGA_TERM &nbsp;—&nbsp; STATUS: <span id="status-value" class="status-ok">ONLINE</span>
+      </p>
+      
+      <!-- Interactive terminal now lives exclusively in the right-hand
+           clue board (see #meta-panel below). -->
+      <h1 class="site-title" style="display: flex; align-items: center; flex-wrap: wrap;">
+        <span>PROJECT_LOG</span>
+      </h1>
+      
+      
+    </header>
+
+    <!-- ============================================================
+         MAIN SCROLLING FEED
+         ============================================================ -->
+    <main id="log-feed" class="log-feed">
+      <div id="entries-container" class="entries-container entries-hidden">
+        <!-- Rendered entries land here at runtime. Hidden until the first
+             haunting completes (see main.js showFeed()). -->
+      </div>
+      <div id="meta-panel" class="meta-panel">
+        <!-- THE interactive terminal / clue board. Solved riddles, logs,
+             and hints accumulate here to drive the escape-room loop. -->
+        <div class="clue-terminal">
+          <p class="clue-label">ANOMALY_DETECTED :: ACTIVE_PROBE</p>
+          <p class="clue-riddle">&quot;I have no voice, I have no hands, I make the noise, I grow the plants. What am I?&quot;</p>
+          <!-- Streaming history scrolls above the prompt; the prompt line
+               stays anchored to the bottom of the terminal. -->
+          <div id="clue-board" class="clue-board" aria-live="polite"></div>
+          <div class="input-line clue-input-line">
+            <span class="prompt">&gt;_</span>
+            <input type="text" id="clue-input" autocomplete="off" placeholder="AWAITING RESPONSE">
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ============================================================
+         FOOTER / VISITOR COUNTER
+         ============================================================ -->
+    <footer id="site-footer" class="site-footer" style="margin-top: auto;">
+      <div class="visitor-counter" id="visitor-counter">
+        <span class="counter-label">VISITORS:</span>
+        <span class="counter-digits" id="counter-digits">
+          <span class="digit">0</span><span class="digit">0</span><span class="digit">0</span><span class="digit">0</span><span class="digit">0</span><span class="digit">0</span>
+        </span>
+      </div>
+      <p class="footer-note">do not adjust your monitor</p>
+    </footer>
+
+  </div>
+
+  <script src="js/main.js" defer></script>
+</body>
+</html>

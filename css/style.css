@@ -1,0 +1,1497 @@
+/* ==========================================================================
+   SPOOKIES_WORKSHOP :: TERMINAL LOG
+   Retro monochrome CRT stylesheet — pure CSS, no external assets.
+
+   Palette (phosphor green, classic monochrome monitor):
+     --bg-void      : #000000   absolute pitch black — the browser IS the screen
+     --bg-screen    : #000000   the terminal's own background
+     --phosphor     : #33ff66   primary glowing text color
+     --phosphor-dim : #1c8f39   secondary / muted text
+     --phosphor-hot : #9dffb0   bright highlight (cursor, hover, status ok)
+     --scan-black   : rgba(0,0,0,0.35)  scanline stripe color
+   ========================================================================== */
+
+:root {
+  --bg-void: #000000;
+  --bg-screen: #000000;
+  --phosphor: #33ff66;
+  --phosphor-dim: #1c8f39;
+  --phosphor-hot: #9dffb0;
+  --scan-black: rgba(0, 0, 0, 0.35);
+
+  /* Ultra-bright tier for entry numbers — the single brightest text on screen. */
+  --phosphor-bright: #39ff14;
+  --glow-bright: 0 0 3px rgba(57, 255, 20, 0.95), 0 0 8px rgba(57, 255, 20, 0.7), 0 0 18px rgba(57, 255, 20, 0.45);
+
+  /* Shared glow recipe so every glowing element matches. */
+  --text-glow: 0 0 2px currentColor, 0 0 6px currentColor, 0 0 14px rgba(51, 255, 102, 0.45);
+}
+
+/* --------------------------------------------------------------------------
+   RESET / BASE
+   Keep this minimal and explicit rather than importing a full reset —
+   easier to read when learning what each rule actually does.
+   -------------------------------------------------------------------------- */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  /* Standard monospace stack, no web font kits. */
+  font-family: "Courier New", "Lucida Console", Consolas, monospace;
+  background: var(--bg-void);
+  color: var(--phosphor);
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+/* --------------------------------------------------------------------------
+   THE "SCREEN"
+   #crt fills the entire viewport edge-to-edge — no more monitor-in-a-room
+   look. The browser window IS the glass.
+   -------------------------------------------------------------------------- */
+.crt-frame {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  background: var(--bg-screen);
+  border: none;
+  border-radius: 14px;
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  padding: 32px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* Curved-glass vignette: darkens the outermost corners and edges so the
+   screen reads as slightly curved, without disturbing the layout. */
+.crt-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(0, 0, 0, 0.4), transparent 14%),
+    radial-gradient(circle at 100% 0%, rgba(0, 0, 0, 0.4), transparent 14%),
+    radial-gradient(circle at 0% 100%, rgba(0, 0, 0, 0.4), transparent 14%),
+    radial-gradient(circle at 100% 100%, rgba(0, 0, 0, 0.4), transparent 14%);
+  box-shadow:
+    inset 0 0 180px 30px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px rgba(51, 255, 102, 0.12);
+}
+
+/* Chunky retro scrollbar — WebKit (Chrome/Edge/Safari) */
+.crt-frame::-webkit-scrollbar {
+  width: 18px;
+}
+.crt-frame::-webkit-scrollbar-track {
+  background: var(--bg-screen);
+  border-left: 2px solid var(--phosphor-dim);
+}
+.crt-frame::-webkit-scrollbar-thumb {
+  background: var(--phosphor-dim);
+  border: 3px solid var(--bg-screen);
+  /* No border-radius — blocky, not smooth. */
+}
+.crt-frame::-webkit-scrollbar-thumb:hover {
+  background: var(--phosphor);
+}
+
+/* Chunky retro scrollbar — Firefox */
+.crt-frame {
+  scrollbar-width: auto;
+  scrollbar-color: var(--phosphor-dim) var(--bg-screen);
+}
+
+/* --------------------------------------------------------------------------
+   CRT OVERLAY EFFECTS
+   Two absolutely-positioned layers stacked above the content:
+     1. .scanlines        — a repeating horizontal stripe pattern
+     2. .flicker-overlay  — a very light full-screen opacity pulse
+   Both use pointer-events: none so they never block clicks/scrolling.
+   -------------------------------------------------------------------------- */
+.scanlines,
+.flicker-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.scanlines {
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--scan-black) 0px,
+    var(--scan-black) 1px,
+    transparent 2px,
+    transparent 3px
+  );
+  mix-blend-mode: multiply;
+  opacity: 0.6;
+}
+
+.flicker-overlay {
+  background: var(--phosphor);
+  opacity: 0;
+  animation: flicker 6s infinite;
+}
+
+/* Rain event — dims the screen 50% while the rain loop plays.
+   pointer-events: none so the user can keep interacting with the terminal. */
+#rain-dim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  z-index: 4;
+  display: none;
+  overflow: hidden;
+}
+
+/* Dedicated raindrop layer, above the scanlines/vignette so the drops
+   stay bright and never get darkened by the CRT overlay layers. */
+#rain-drops {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  overflow: hidden;
+  display: none;
+}
+
+/* Full-viewport kernel/glitch screen (the `static` haunting). Covers the
+   entire screen above everything else and jitters like a failing monitor. */
+#haunted-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 99999;
+  background: #050505;
+  color: #ff3333;
+  font-family: "Courier New", "Lucida Console", Consolas, monospace;
+  font-size: 1.05rem;
+  line-height: 1.4;
+  overflow: hidden;
+  padding: 24px;
+  box-sizing: border-box;
+  white-space: pre-wrap;
+  word-break: break-all;
+  pointer-events: none;
+  text-align: center;
+  animation: glitch-screen-jitter 0.18s steps(2) infinite;
+}
+
+@keyframes glitch-screen-jitter {
+  0%   { transform: translate(0, 0); }
+  25%  { transform: translate(-2px, 1px); }
+  50%  { transform: translate(2px, -1px); }
+  75%  { transform: translate(-1px, -2px); }
+  100% { transform: translate(0, 0); }
+}
+
+/* The hidden key for ENTRY 003 (SECTOR_34), dropped once in the glitch wall
+   and pulsed in glowing electric blue so it stands out of the noise. */
+.pulse-key {
+  color: #00ffff;
+  font-weight: bold;
+  text-shadow: 0 0 6px #00ffff, 0 0 14px #00ffff;
+  animation: key-pulse 1s ease-in-out infinite;
+}
+
+@keyframes key-pulse {
+  0%, 100% { opacity: 1; filter: brightness(1); }
+  50%      { opacity: 0.2; filter: brightness(0.35); }
+}
+
+/* White raindrops — literal "." characters falling through the dim. */
+.rain-drop {
+  position: absolute;
+  top: 0;
+  color: #ffffff;
+  font-family: "Courier New", "Lucida Console", Consolas, monospace;
+  font-weight: bold;
+  line-height: 1;
+  pointer-events: none;
+  text-shadow: 0 0 4px rgba(255, 255, 255, 0.8), 0 0 10px rgba(255, 255, 255, 0.5);
+  animation-name: rain-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes rain-fall {
+  from { transform: translateY(-8vh); }
+  to { transform: translateY(104vh); }
+}
+
+/* Ascend event — blood rain rising out of the screen while the sky trumpets. */
+#ascend-dim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  z-index: 4;
+  display: none;
+  overflow: hidden;
+}
+
+#ascend-drops {
+  position: absolute;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  overflow: hidden;
+  display: none;
+}
+
+/* Red drops drifting UPWARD, the reverse of the white rain. */
+.ascend-drop {
+  position: absolute;
+  top: 0;
+  color: #ff2b2b;
+  font-family: "Courier New", "Lucida Console", Consolas, monospace;
+  font-weight: bold;
+  line-height: 1;
+  pointer-events: none;
+  text-shadow: 0 0 4px rgba(255, 43, 43, 0.9), 0 0 10px rgba(255, 43, 43, 0.6);
+  animation-name: ascend-rise;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes ascend-rise {
+  from { transform: translateY(104vh); }
+  to { transform: translateY(-8vh); }
+}
+
+/* The final half-second before the trumpets end — violent, frantic flickering.
+   (During the rest of the event the flicker is slow and random, driven by JS.) */
+body.ascend-flicker-wild {
+  animation: ascend-flicker-wild 0.08s steps(1) infinite;
+}
+
+@keyframes ascend-flicker-wild {
+  0% { filter: brightness(0.05); }
+  12% { filter: brightness(2.4); }
+  24% { filter: brightness(0); }
+  38% { filter: brightness(2.8); }
+  50% { filter: brightness(0.15); }
+  64% { filter: brightness(1.2); }
+  76% { filter: brightness(0); }
+  90% { filter: brightness(3); }
+  100% { filter: brightness(0.4); }
+}
+
+/* HELL event — the rain haunting run corrupted. A BIG lightning strike the
+   instant the storm starts (multi-flash whiteout), then a quarter-second
+   glitch halfway through the loop right before the rain flips to blood. */
+body.hell-lightning {
+  animation: hell-lightning 0.9s ease-out 1;
+}
+
+@keyframes hell-lightning {
+  0%   { filter: brightness(6) saturate(0); }
+  7%   { filter: brightness(1) saturate(1); }
+  11%  { filter: brightness(5) saturate(0); }
+  18%  { filter: brightness(0.9) saturate(1); }
+  22%  { filter: brightness(4) saturate(0); }
+  38%  { filter: brightness(1) saturate(1); }
+  100% { filter: brightness(1) saturate(1); }
+}
+
+body.hell-glitch {
+  animation: hell-glitch 0.25s steps(2) 1;
+}
+
+@keyframes hell-glitch {
+  0%   { filter: invert(1) contrast(2.4) brightness(1.5); }
+  30%  { filter: none; }
+  60%  { filter: invert(0.85) hue-rotate(90deg) brightness(1.2); }
+  100% { filter: none; }
+}
+
+/* Atmosphere event — flips every CSS-variable-driven text color to red for
+   the duration of the ambient loop. Declared on body so it overrides the
+   inherited :root values for the whole monitor. */
+body.atmosphere {
+  --phosphor: #ff4444;
+  --phosphor-dim: #b01e1e;
+  --phosphor-hot: #ff7777;
+  --text-glow: 0 0 2px currentColor, 0 0 6px currentColor, 0 0 14px rgba(255, 68, 68, 0.5);
+}
+
+/* During the atmosphere haunting the whole monitor jitters and warps like a
+   failing tube — applied to the #crt frame so every layer shakes together. */
+body.atmosphere #crt {
+  animation: atmosphere-jitter 0.14s steps(2) infinite;
+}
+
+@keyframes atmosphere-jitter {
+  0%   { transform: translate(0, 0); filter: none; }
+  25%  { transform: translate(-1px, 0); filter: hue-rotate(20deg) brightness(1.06); }
+  50%  { transform: translate(1px, 1px); filter: none; }
+  75%  { transform: translate(0, -1px); filter: hue-rotate(-20deg) brightness(0.94); }
+  100% { transform: translate(0, 0); filter: none; }
+}
+
+/* Lore event — erratic full-screen flicker while the audio plays. */
+.lore-flicker {
+  animation: lore-flicker 1.5s infinite;
+}
+
+@keyframes lore-flicker {
+  0%, 100% { opacity: 1; }
+  8% { opacity: 0.15; }
+  9% { opacity: 1; }
+  12% { opacity: 0.6; }
+  14% { opacity: 0; }
+  16% { opacity: 1; }
+  34% { opacity: 0.3; }
+  36% { opacity: 1; }
+  40% { opacity: 0; }
+  43% { opacity: 0.8; }
+  44% { opacity: 1; }
+  60% { opacity: 0.5; }
+  61% { opacity: 0; }
+  62% { opacity: 1; }
+  75% { opacity: 0.2; }
+  77% { opacity: 1; }
+  83% { opacity: 0; }
+  85% { opacity: 1; }
+}
+
+/* Lore entry — revealed post blinks intermittently on a loop, forever. */
+.entry-flicker {
+  position: relative;
+  z-index: 6; /* floats above other feed entries */
+  animation: entry-flicker 7s infinite;
+}
+
+@keyframes entry-flicker {
+  0%, 100% { opacity: 1; }
+  3% { opacity: 0.7; }
+  4% { opacity: 1; }
+  18% { opacity: 1; }
+  19% { opacity: 0; }
+  21% { opacity: 1; }
+  22% { opacity: 0.5; }
+  23% { opacity: 1; }
+  41% { opacity: 1; }
+  42% { opacity: 0; }
+  44% { opacity: 1; }
+  60% { opacity: 1; }
+  61% { opacity: 0.3; }
+  62% { opacity: 1; }
+  77% { opacity: 1; }
+  78% { opacity: 0; }
+  80% { opacity: 1; }
+  92% { opacity: 1; }
+  93% { opacity: 0.6; }
+  94% { opacity: 1; }
+}
+
+/* Demon event — an ASCII entity fades in over the terminal. */
+#demon-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.demon-art {
+  display: block;
+  margin: 0;
+  color: #cfcfcf;
+  font-family: "Courier New", "Lucida Console", Consolas, monospace;
+  /* Sized to fit the art (67 lines x 100 cols) inside the viewport. */
+  font-size: min(1.6vw, calc(100vh / 72));
+  line-height: 1.05;
+  white-space: pre;
+  word-wrap: normal;
+  overflow-wrap: normal;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-width: 100%;
+  max-height: 100%;
+  text-shadow: 0 0 6px rgba(200, 200, 200, 0.45);
+  opacity: 0;
+  transition: opacity 1.5s ease-in;
+}
+
+@keyframes demon-flicker {
+  0% { opacity: 1; }
+  12% { opacity: 0; }
+  24% { opacity: 1; }
+  38% { opacity: 0.2; }
+  52% { opacity: 1; }
+  66% { opacity: 0; }
+  80% { opacity: 0.5; }
+  100% { opacity: 0; }
+}
+
+@keyframes flicker {
+  /* Mostly stays invisible; brief, subtle brightness blips only. */
+  0%, 96%, 100% { opacity: 0; }
+  97% { opacity: 0.02; }
+  98% { opacity: 0.005; }
+  99% { opacity: 0.03; }
+}
+
+/* Respect users who don't want motion — kill the flicker entirely. */
+@media (prefers-reduced-motion: reduce) {
+  .flicker-overlay { animation: none; }
+  .cursor-blink { animation: none; }
+  .lore-flicker { animation: none; }
+  .entry-flicker { animation: none; }
+  .status-sos,
+  .status-pulse,
+  .status-strobe,
+  .status-noise,
+  .status-glitch,
+  .status-bgr,
+  .status-fade,
+  .status-hell { animation: none; }
+  .rain-drop { display: none; }
+  .ascend-drop { display: none; }
+  .ascend-flicker-wild { animation: none; }
+  .demon-art { animation: none; transition: none; }
+  #haunted-overlay { animation: none; }
+  .pulse-key { animation: none; }
+  .clue-line--update { animation: none; }
+  .atmosphere-note { animation: none; }
+  .clue-note { animation: none; }
+  .entry008-note { animation: none; }
+  .clue-line--flash-red { animation: none; }
+  .clue-line--lore-error { animation: none; }
+  .clue-line--egregore { animation: none; }
+  .clue-key-flash { animation: none; }
+  .entry-call { animation: none; }
+  .riddle-key { animation: none; }
+  body.atmosphere #crt { animation: none; filter: none; }
+  body.hell-lightning { animation: none; }
+  body.hell-glitch { animation: none; }
+}
+
+/* --------------------------------------------------------------------------
+   HEADER
+   -------------------------------------------------------------------------- */
+.site-header {
+  position: relative;
+  z-index: 1; /* sits above the overlay layers' stacking context content-wise */
+  border-bottom: 1px dashed var(--phosphor-dim);
+  padding-bottom: 16px;
+}
+
+.system-line {
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  color: var(--phosphor-dim);
+  text-shadow: var(--text-glow);
+  margin-bottom: 10px;
+}
+
+.status-ok {
+  color: var(--phosphor-hot);
+  font-weight: bold;
+}
+
+#status-value {
+  display: inline-block;
+}
+
+#status-value.status-offline {
+  color: #ff3333;
+  font-weight: bold;
+  text-shadow: 0 0 2px currentColor, 0 0 6px rgba(255, 51, 51, 0.7), 0 0 14px rgba(255, 51, 51, 0.5);
+}
+
+/* Per-haunting status spooks — all driven by the shared status-offline state. */
+.status-sos { animation: status-sos 4s steps(1) infinite; }
+@keyframes status-sos {
+  0%, 5% { opacity: 1; } 5%, 10% { opacity: 0; }
+  10%, 15% { opacity: 1; } 15%, 20% { opacity: 0; }
+  20%, 25% { opacity: 1; } 25%, 37.5% { opacity: 0; }
+  37.5%, 52.5% { opacity: 1; } 52.5%, 60% { opacity: 0; }
+  60%, 75% { opacity: 1; } 75%, 82.5% { opacity: 0; }
+  82.5%, 97.5% { opacity: 1; } 97.5%, 100% { opacity: 0; }
+}
+
+.status-pulse { animation: status-pulse 1.8s ease-in-out infinite; }
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+.status-strobe { animation: status-strobe 0.5s steps(1) infinite; }
+@keyframes status-strobe {
+  0%, 100% { opacity: 1; }
+  10% { opacity: 0.2; }
+  20% { opacity: 1; }
+  30% { opacity: 0.1; }
+  40% { opacity: 1; }
+  55% { opacity: 0.4; }
+  60% { opacity: 1; }
+  75% { opacity: 0.15; }
+  85% { opacity: 1; }
+}
+
+.status-noise { animation: status-noise 0.9s steps(1) infinite; }
+@keyframes status-noise {
+  0%, 100% { opacity: 1; }
+  8% { opacity: 0; }
+  12% { opacity: 1; }
+  25% { opacity: 0.3; }
+  30% { opacity: 1; }
+  45% { opacity: 0; }
+  55% { opacity: 0.7; }
+  60% { opacity: 1; }
+  72% { opacity: 0.2; }
+  78% { opacity: 1; }
+  90% { opacity: 0; }
+  95% { opacity: 1; }
+}
+
+.status-glitch { animation: status-glitch 0.7s steps(1) infinite; }
+@keyframes status-glitch {
+  0%, 100% { opacity: 1; transform: translateX(0); }
+  10% { opacity: 0; transform: translateX(3px); }
+  15% { opacity: 1; transform: translateX(-3px); }
+  30% { opacity: 1; transform: translateX(0); }
+  40% { opacity: 0.2; transform: translateX(2px); }
+  45% { opacity: 1; transform: translateX(-2px); }
+  60% { opacity: 1; transform: translateX(0); }
+  70% { opacity: 0; transform: translateX(4px); }
+  75% { opacity: 1; transform: translateX(0); }
+}
+
+.status-bgr { animation: status-bgr 2.4s linear infinite; }
+@keyframes status-bgr {
+  0% { color: hsl(240, 100%, 55%); }
+  33% { color: hsl(120, 100%, 55%); }
+  66% { color: hsl(0, 100%, 55%); }
+  100% { color: hsl(240, 100%, 55%); }
+}
+
+.status-fade { animation: status-fade 0.8s steps(1) infinite; }
+@keyframes status-fade {
+  0%, 100% { color: #ffffff; }
+  50% { color: #ff3333; }
+}
+
+.status-hell { animation: status-hell 2s steps(1) infinite; }
+@keyframes status-hell {
+  0%, 100% { opacity: 1; }
+  25% { opacity: 0.15; }
+  50% { opacity: 1; }
+  75% { opacity: 0.15; }
+}
+
+.site-title {
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  letter-spacing: 0.08em;
+  text-shadow: var(--text-glow);
+}
+
+.cursor-blink {
+  animation: blink 1.1s steps(1) infinite;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.site-subtitle {
+  margin-top: 6px;
+  font-size: 0.85rem;
+  color: var(--phosphor-dim);
+}
+
+/* --------------------------------------------------------------------------
+   MAIN LOG FEED
+   -------------------------------------------------------------------------- */
+.log-feed {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: row;
+  gap: 40px;
+  flex: 1;
+  /* Let the two panels size and scroll independently instead of growing
+     the whole frame. */
+  min-height: 0;
+}
+
+/* Left half — the post boxes live inside their own scroll box that never
+   crosses the middle of the screen. It is 100% blank and hidden on load;
+   the first haunting must complete before it is revealed. */
+#entries-container {
+  flex: 0 0 50%;
+  max-width: 50%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 8px;
+}
+
+#entries-container.entries-hidden {
+  display: none;
+}
+
+/* Right half — reserved puzzle space. Clues, images, symbols, and effects
+   will land here. A faint analog divider marks the boundary. */
+.meta-panel {
+  flex: 1;
+  min-width: 0;
+  border-left: 1px dashed var(--phosphor-dim);
+  padding-left: 24px;
+}
+
+/* The riddle terminal that gates ENTRY 001. Behaves like a real Linux
+   terminal: header (label/riddle) on top, streaming history in the middle
+   that scrolls, and the interactive prompt anchored at the bottom. */
+.clue-terminal {
+  border: 1px dashed var(--phosphor-dim);
+  padding: 14px 16px;
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.clue-label {
+  color: var(--phosphor-hot);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  margin-bottom: 8px;
+}
+
+.clue-riddle {
+  color: var(--phosphor);
+  font-style: italic;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+/* Once the terminal wipes itself the static label + riddle vanish, leaving
+   only the prompt. Restored only by a full esrever reset. */
+.clue-terminal--cleared .clue-label,
+.clue-terminal--cleared .clue-riddle {
+  display: none;
+}
+
+/* Clue images printed straight into the terminal (e.g. the BKA_L payload
+   that unlocks ENTRY 007). Sized to the terminal width with height left to
+   the image's true aspect ratio; the clue board's scrollbar handles the
+   height instead of a hard cap, so tall payloads never get squished. */
+.clue-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  box-sizing: border-box;
+  margin: 10px 0 12px;
+  border: 1px dashed var(--phosphor-dim);
+  padding: 4px;
+  image-rendering: pixelated;
+}
+
+.clue-input-line {
+  flex: none;
+  margin-top: 12px;
+}
+
+.clue-input-line input {
+  background: transparent;
+  border: none;
+  color: var(--phosphor);
+  font-family: inherit;
+  font-size: 0.9rem;
+  flex: 1;
+  outline: none;
+  caret-color: var(--phosphor-hot);
+}
+
+.clue-input-line input::placeholder {
+  color: var(--phosphor-dim);
+  opacity: 0.6;
+}
+
+.clue-board {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  /* Chunky retro scrollbar — WebKit */
+  scrollbar-width: thin;
+  scrollbar-color: var(--phosphor-dim) transparent;
+}
+
+.clue-board::-webkit-scrollbar {
+  width: 8px;
+}
+
+.clue-board::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.clue-board::-webkit-scrollbar-thumb {
+  background: var(--phosphor-dim);
+  border: 1px solid var(--bg-screen);
+}
+
+.clue-line {
+  color: var(--phosphor-dim);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.clue-line--cmd {
+  color: var(--phosphor);
+}
+
+.clue-line--status {
+  color: var(--phosphor-dim);
+  font-style: italic;
+}
+
+.clue-line--success {
+  color: var(--phosphor-hot);
+}
+
+.clue-line--hint {
+  color: var(--phosphor-dim);
+  border-left: 2px solid var(--phosphor-dim);
+  padding-left: 8px;
+}
+
+.clue-line--error {
+  color: #ff5555;
+  text-shadow: 0 0 6px #ff5555;
+}
+
+/* Atmosphere self-update: the fake source dump that streams into the board
+   on its own, dense and dim so it reads as machine output. */
+.clue-line--script {
+  color: var(--phosphor-dim);
+  font-size: 0.78rem;
+}
+
+/* UPDATE COMPLETE banner — flashes 3 times, like the OFFLINE status word. */
+.clue-line--update {
+  color: var(--phosphor-hot);
+  font-weight: bold;
+  letter-spacing: 0.06em;
+  text-shadow: 0 0 4px currentColor, 0 0 12px currentColor;
+  animation: update-flash 1.5s steps(1) forwards;
+}
+
+@keyframes update-flash {
+  0%, 16% { opacity: 1; }
+  17%, 32% { opacity: 0; }
+  33%, 48% { opacity: 1; }
+  49%, 64% { opacity: 0; }
+  65%, 80% { opacity: 1; }
+  81%, 96% { opacity: 0; }
+  97%, 100% { opacity: 1; }
+}
+
+/* ENTRY 004's hidden payload — an inert '@' waiting to be clicked. It pulses
+   subtly so it reads as "off" in the archive, yet tempts interaction. */
+.atmosphere-note {
+  display: inline-block;
+  margin: 14px 0 4px;
+  padding: 2px 10px;
+  color: var(--phosphor-hot);
+  font-size: 1.3rem;
+  font-weight: bold;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  user-select: none;
+  text-shadow: 0 0 4px currentColor, 0 0 12px currentColor;
+  border: 1px dashed var(--phosphor-dim);
+  animation: note-breathe 2.6s ease-in-out infinite;
+  transition: background-color 0.2s;
+}
+
+.atmosphere-note:hover {
+  background: rgba(51, 255, 102, 0.06);
+}
+
+@keyframes note-breathe {
+  0%, 100% { opacity: 0.75; }
+  50% { opacity: 1; }
+}
+
+/* Once revealed the payload image the '@' goes inert. */
+.atmosphere-note--done {
+  opacity: 0.35;
+  cursor: default;
+  animation: none;
+  text-decoration: line-through;
+  text-decoration-color: var(--phosphor-dim);
+}
+
+/* Terminal '@' click box used by the ENTRY 008 handshake sequence. Same
+   visual language as the atmosphere note, but lives in the clue board and
+   carries its own click counter (3 / 6 / 9). */
+.clue-note {
+  display: inline-block;
+  align-self: flex-start;
+  margin: 4px 0;
+  padding: 2px 10px;
+  color: var(--phosphor-hot);
+  font-size: 1.3rem;
+  font-weight: bold;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  user-select: none;
+  text-shadow: 0 0 4px currentColor, 0 0 12px currentColor;
+  border: 1px dashed var(--phosphor-dim);
+  animation: note-breathe 2.6s ease-in-out infinite;
+  transition: background-color 0.2s;
+}
+
+.clue-note:hover {
+  background: rgba(51, 255, 102, 0.06);
+}
+
+.clue-note--done {
+  opacity: 0.35;
+  cursor: default;
+  animation: none;
+  text-decoration: line-through;
+  text-decoration-color: var(--phosphor-dim);
+}
+
+/* ENTRY 008's riddle: types itself into the post body after unlock, then
+   renders statically here. Reads as a continuation of the archive text. */
+.entry-riddle {
+  margin-top: 14px;
+  line-height: 1.7;
+  color: var(--phosphor);
+  white-space: normal;
+}
+
+/* ENTRY 008's own hidden payload — the '@' that arms after the egregore
+   dump. Three clicks search out the SYS_FILE_333 key. */
+.entry008-note {
+  display: inline-block;
+  margin: 16px 0 4px;
+  padding: 2px 10px;
+  color: var(--phosphor-hot);
+  font-size: 1.3rem;
+  font-weight: bold;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  user-select: none;
+  text-shadow: 0 0 4px currentColor, 0 0 12px currentColor;
+  border: 1px dashed var(--phosphor-dim);
+  animation: note-breathe 2.6s ease-in-out infinite;
+  transition: background-color 0.2s;
+}
+
+.entry008-note:hover {
+  background: rgba(51, 255, 102, 0.06);
+}
+
+.entry008-note--done {
+  opacity: 0.35;
+  cursor: default;
+  animation: none;
+  text-decoration: line-through;
+  text-decoration-color: var(--phosphor-dim);
+}
+
+/* The egregore's message, typed into the terminal window: hot red glitch. */
+.clue-line--egregore {
+  color: #ff4444;
+  font-weight: bold;
+  text-shadow: 0 0 4px #ff4444, 0 0 12px rgba(255, 68, 68, 0.7);
+  animation: egregore-flicker 0.5s steps(2) infinite;
+}
+
+@keyframes egregore-flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+/* The SYS_FILE_333 key in the FILE LOCATED line: its hue is driven inline by
+   the rainbow cycle until ENTRY 009 decrypts. */
+.clue-key-rainbow {
+  font-weight: bold;
+}
+
+/* ENTRY 006's final line — the thing calling. Slow, patient red pulse. */
+.entry-call {
+  color: #ff4444;
+  font-weight: bold;
+  text-shadow: 0 0 4px #ff4444, 0 0 12px rgba(255, 68, 68, 0.5);
+  animation: call-pulse 3.2s ease-in-out infinite;
+}
+
+/* ENTRY 002's riddle — the capital letters spell the next trigger (STATIC).
+   Each capital pulses red until the static haunting runs, then settles. */
+.riddle-key {
+  color: #ff3333;
+  font-weight: bold;
+  text-shadow: 0 0 4px #ff3333, 0 0 12px rgba(255, 51, 51, 0.7);
+  animation: riddle-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes riddle-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+.entry--riddle-done .riddle-key {
+  color: var(--phosphor);
+  text-shadow: none;
+  animation: none;
+  opacity: 0.85;
+}
+
+@keyframes call-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+/* The ORWELL portion of the ORWELL_VECT hint: the only key to ENTRY 005.
+   It pulses red continuously once ATMOSPHERE CLEARED logs — never stopping
+   until ENTRY 005 is actually decrypted (which wipes the board anyway). */
+.clue-key-flash {
+  color: #ff3333;
+  font-weight: bold;
+  text-shadow: 0 0 4px #ff3333, 0 0 12px rgba(255, 51, 51, 0.7);
+  animation: key-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes key-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* ENTRY 008 lock-status line: flashes red three times, then goes green. */
+@keyframes lock-flash {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.clue-line--flash-red {
+  color: #ff3333;
+  font-weight: bold;
+  text-shadow: 0 0 4px #ff3333, 0 0 12px rgba(255, 51, 51, 0.7);
+  animation: lock-flash 0.6s ease-in-out 3;
+}
+
+.clue-line--flash-green {
+  color: var(--phosphor-hot);
+  font-weight: bold;
+  text-shadow: 0 0 4px currentColor, 0 0 12px currentColor;
+}
+
+/* ENTRY 009's aftermath error line: flashes red continuously until the riddle
+   below it takes over (JS freezes it after 3s). */
+.clue-line--lore-error {
+  color: #ff3333;
+  font-weight: bold;
+  text-shadow: 0 0 4px #ff3333, 0 0 12px rgba(255, 51, 51, 0.7);
+  animation: lock-flash 0.6s steps(2) infinite;
+}
+
+/* End-of-game credits: the whole block fades in together over half a second,
+   the Egregore art centered and scaled to fit the terminal width. */
+.clue-credits {
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  padding: 20px 0 28px;
+}
+.clue-credits--in {
+  opacity: 1;
+}
+.clue-credits-logo {
+  display: block;
+  width: 160px;
+  height: auto;
+  margin: 0 auto 22px;
+}
+.clue-credits-art {
+  margin: 0 auto;
+  text-align: center;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--phosphor);
+}
+.clue-credits-tag {
+  margin-top: 26px;
+  text-align: center;
+  color: var(--phosphor);
+}
+.clue-credits-link {
+  display: block;
+  margin-top: 34px;
+  text-align: center;
+  color: var(--phosphor-hot);
+  text-decoration: underline;
+  text-shadow: 0 0 6px currentColor;
+}
+.clue-credits-link:hover {
+  color: #ffffff;
+}
+
+.entry {
+  /* Thin phosphor frame around each post — the analog "case" for the log.
+     The left edge stays heavier (3px) to keep the established accent. */
+  border: 1px solid var(--phosphor-dim);
+  border-left-width: 3px;
+  box-shadow: 0 0 8px rgba(28, 143, 57, 0.18), inset 0 0 10px rgba(28, 143, 57, 0.06);
+  padding: 14px 16px;
+
+  /* Breathing room between posts — a solid 3-4 blank lines so media-heavy
+     entries (images/files/audio) never crowd the next record. */
+  margin-bottom: 72px;
+
+  /* Stacked layout: every entry flows strictly top-to-bottom as
+     entry index -> date -> title -> body, in a single column. */
+  display: grid;
+  grid-template-columns: 1fr;
+  row-gap: 6px;
+}
+
+/* The meta row is dissolved into the entry grid so its index and date
+   children stack as their own rows above the title. */
+.entry-meta {
+  display: contents;
+  font-size: 0.75rem;
+  color: var(--phosphor-dim);
+  letter-spacing: 0.05em;
+}
+
+/* TIER 1 — ultra-bright fluorescent green entry number. */
+.entry-index {
+  grid-column: 1;
+  color: var(--phosphor-bright);
+  font-weight: bold;
+  text-shadow: var(--glow-bright);
+}
+
+/* TIER 3 — dim date, stacked directly beneath the entry number. */
+.entry-date {
+  grid-column: 1;
+  color: var(--phosphor-dim);
+  text-align: left;
+}
+
+/* TIER 2 — standard phosphor title. */
+.entry-title {
+  grid-column: 1;
+  font-size: 1.05rem;
+  color: var(--phosphor);
+  text-shadow: var(--text-glow);
+  margin-bottom: 8px;
+  text-transform: lowercase;
+}
+
+/* TIER 3 — degraded, lower-intensity body text. */
+.entry-body {
+  grid-column: 1;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--phosphor);
+  opacity: 0.9;
+  white-space: pre-line;
+}
+
+/* --------------------------------------------------------------------------
+   FOOTER / VISITOR COUNTER
+   -------------------------------------------------------------------------- */
+.site-footer {
+  position: relative;
+  z-index: 1;
+  border-top: 1px dashed var(--phosphor-dim);
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.visitor-counter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.counter-label {
+  font-size: 0.75rem;
+  color: var(--phosphor-dim);
+  letter-spacing: 0.05em;
+}
+
+/* Pixelated LED-style digit counter, built with flat blocks instead of
+   an image so it stays a "pure CSS" effect. */
+.counter-digits {
+  display: flex;
+  gap: 3px;
+}
+
+.digit {
+  display: inline-block;
+  min-width: 1.1em;
+  padding: 2px 4px;
+  background: #041005;
+  color: var(--phosphor-hot);
+  text-align: center;
+  font-weight: bold;
+  font-size: 0.95rem;
+  border: 1px solid var(--phosphor-dim);
+  text-shadow: var(--text-glow);
+  /* image-rendering keeps any future icon/sprite in this counter blocky. */
+  image-rendering: pixelated;
+}
+
+.footer-note {
+  font-size: 0.7rem;
+  color: var(--phosphor-dim);
+  opacity: 0.8;
+}
+
+/* --------------------------------------------------------------------------
+   ENTRY MEDIA
+   Optional media block injected by js/main.js when a post's `media`
+   field resolves to an image, an audio file, an iframe embed, or a
+   fallback link. Shares the same glow/monochrome language as the rest
+   of the terminal.
+   -------------------------------------------------------------------------- */
+.entry-media {
+  grid-column: 1;
+  margin-top: 14px;
+  border: 1px dashed var(--phosphor-dim);
+  padding: 10px;
+}
+
+.entry-lock-box {
+  grid-column: 1;
+}
+
+.entry-media--image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  /* Slight desaturation + green tint keeps photos from breaking the
+     monochrome CRT illusion. */
+  filter: grayscale(60%) sepia(20%) hue-rotate(60deg) brightness(0.9);
+  border: 1px solid var(--phosphor-dim);
+}
+
+.entry-media--audio audio {
+  width: 100%;
+}
+
+.entry-media--embed iframe {
+  width: 100%;
+  border: 1px solid var(--phosphor-dim);
+  aspect-ratio: 16 / 9;
+}
+
+.entry-media--link a {
+  color: var(--phosphor-hot);
+  text-decoration: underline;
+  word-break: break-all;
+  font-size: 0.85rem;
+}
+
+/* --------------------------------------------------------------------------
+   ADMIN DASHBOARD (deep-web/dashboard.html)
+   Same phosphor/CRT language as the public page, applied to a login
+   gate and a post-creation form instead of a log feed.
+   -------------------------------------------------------------------------- */
+
+/* --- Login gate --- */
+.login-box {
+  max-width: 360px;
+  margin: 40px auto;
+  padding: 24px;
+  border: 1px solid var(--phosphor-dim);
+  text-align: center;
+}
+
+.login-box p {
+  font-size: 0.8rem;
+  color: var(--phosphor-dim);
+  margin-bottom: 16px;
+}
+
+.login-error {
+  min-height: 1.2em;
+  font-size: 0.75rem;
+  color: #ff5555;
+  text-shadow: 0 0 6px #ff5555;
+  margin-top: 10px;
+}
+
+/* --- Shared form controls (login + post-creation form) --- */
+.terminal-input,
+.terminal-textarea {
+  width: 100%;
+  background: var(--bg-screen);
+  border: 1px solid var(--phosphor-dim);
+  color: var(--phosphor);
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 10px 12px;
+  caret-color: var(--phosphor-hot);
+}
+
+.terminal-input:focus,
+.terminal-textarea:focus {
+  outline: none;
+  border-color: var(--phosphor);
+  box-shadow: 0 0 8px rgba(51, 255, 102, 0.35);
+}
+
+.terminal-textarea {
+  resize: vertical;
+  min-height: 160px;
+  line-height: 1.5;
+}
+
+.terminal-button {
+  background: transparent;
+  border: 1px solid var(--phosphor);
+  color: var(--phosphor);
+  font-family: inherit;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  padding: 10px 20px;
+  cursor: pointer;
+  text-shadow: var(--text-glow);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.terminal-button:hover,
+.terminal-button:focus-visible {
+  background: var(--phosphor);
+  color: #05130a;
+}
+
+/* --- Post-creation form --- */
+.dashboard-panel {
+  padding: 8px 4px 24px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--phosphor-dim);
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.form-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.7 ounce;
+  color: var(--phosphor-dim);
+  opacity: 0.85;
+}
+
+.form-status {
+  min-height: 1.4em;
+  font-size: 0.8rem;
+  margin-top: 14px;
+}
+
+.form-status--ok {
+  color: var(--phosphor-hot);
+}
+
+.form-status--error {
+  color: #ff5555;
+}
+
+/* Utility used by JS to toggle visibility without inline styles. */
+.is-hidden {
+  display: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   TERMINAL GATEWAY OVERLAY (Step 1 Entrance Lock)
+   -------------------------------------------------------------------------- */
+#terminal-gateway {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-screen);
+  z-index: 4; /* Sits completely on top of content, but right under scanlines */
+  display: none; /* Controlled by .gateway-active */
+  padding: 32px 40px;
+}
+
+#terminal-gateway.gateway-active {
+  display: block;
+}
+
+.terminal-box {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.terminal-header {
+  border-bottom: 1px dashed var(--phosphor-dim);
+  padding-bottom: 16px;
+  margin-bottom: 24px;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  color: var(--phosphor-dim);
+  text-shadow: var(--text-glow);
+}
+
+.terminal-body {
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.system-text {
+  margin-bottom: 4px;
+}
+
+.input-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.prompt {
+  white-space: nowrap;
+  text-shadow: var(--text-glow);
+}
+
+#gateway-password {
+  background: transparent;
+  border: none;
+  color: var(--phosphor);
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 0;
+  margin: 0;
+  flex: 1;
+  caret-color: var(--phosphor-hot);
+}
+
+#gateway-password:focus {
+  outline: none;
+}
+
+.error-text {
+  margin-top: 20px;
+  color: #ff5555;
+  text-shadow: 0 0 6px #ff5555;
+  font-weight: bold;
+}
+
+/* --------------------------------------------------------------------------
+   RESPONSIVE ADJUSTMENTS
+   The "monitor" keeps its 4:3 feel but eases padding/type size down on
+   narrow viewports so it never overflows a phone screen.
+   -------------------------------------------------------------------------- */
+@media (max-width: 600px) {
+  .crt-frame {
+    aspect-ratio: 3 / 4;
+    padding: 20px 18px;
+    gap: 20px;
+  }
+
+  /* Collapse the split screen on narrow viewports: both the feed and the
+     clue terminal go full width, stacked vertically. */
+  .log-feed {
+    flex-direction: column;
+    gap: 20px;
+    min-height: auto;
+  }
+
+  #entries-container {
+    flex: none;
+    max-width: 100%;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .meta-panel {
+    flex: none;
+    width: 100%;
+    border-left: none;
+    padding-left: 0;
+  }
+
+  /* The stacked layout is already a single column, so narrow screens
+     only need to ensure every entry child occupies column 1. */
+  .entry-index,
+  .entry-date,
+  .entry-title,
+  .entry-body,
+  .entry-media,
+  .entry-lock-box {
+    grid-column: 1;
+  }
+
+  #terminal-gateway {
+    padding: 20px 18px;
+  }
+}
+
+#amijok-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #fff;
+  /* Highest layer in the build: the secret event's screen always wins over
+     every box, entry image, and the other overlays. */
+  z-index: 999999;
+  display: none;
+  justify-content: center;
+  align-items: flex-start;
+  padding-left: 20px;
+}
+
+.amijok-message {
+  font-family: inherit;
+  font-size: 1rem;
+}
