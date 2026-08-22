@@ -134,9 +134,12 @@
   // answering: the startup chime and warm-up line both wait out this beat.
   const BOOT_POWER_DELAY_MS = 500;
   // Phase proportions of the fallback beat, reused to slice whatever total
-  // duration Startup.wav reports into warm-up / churn / rise.
+  // duration Startup.wav reports into warm-up / churn windows.
   const BOOT_WARMUP_SHARE = BOOT_WARMUP_MS / BOOT_FALLBACK_TOTAL_MS;
-  const BOOT_RISE_SHARE = BOOT_RISE_MS / BOOT_FALLBACK_TOTAL_MS;
+  // Drive bars fill between these shares of the churn window; the slowest
+  // bar pins exactly when the boot layer hard-cuts to the archive.
+  const BOOT_BAR_FAST_SHARE = 0.6;
+  const BOOT_BAR_SLOW_SHARE = 0.3;
 
   // The machine hum: PC_Loop.wav starts looping the moment boot hands off and
   // runs underneath everything until the final log reveal (ENTRY 010) — the
@@ -832,10 +835,10 @@ int main() {
 
   // The power-on boot show: a blinking "PRESS ANY KEY" gate (which doubles as
   // the browser's audio unlock), a short dead-air beat, then warm-up line ->
-  // spinner/log/bars churn -> the screen rises to full brightness and
-  // dissolves into whatever is underneath (the gateway on a cold boot, the
-  // archive on a mid-session reload). The whole show is paced by Startup.wav's
-  // real length; the rest of the page keeps initializing while it plays.
+  // spinner/log/bars churn -> the drives pin at 100% and the boot layer cuts
+  // away outright, leaving the gateway/archive already sitting there. The
+  // whole show is paced by Startup.wav's real length (which keeps ringing out
+  // under the archive after the cut); the rest of the page keeps initializing.
   function runBootSequence() {
     const overlay = document.getElementById("boot-overlay");
     if (!overlay) return;
@@ -850,9 +853,8 @@ int main() {
     const bars = Array.prototype.slice.call(overlay.querySelectorAll(".boot-bar"));
     const warmupEl = overlay.querySelector(".boot-warmup");
     const promptEl = overlay.querySelector(".boot-prompt");
-    const crtFrame = document.getElementById("crt");
 
-    // Slices totalMs into the three phases using the fallback beat's
+    // Slices totalMs into the boot phases using the fallback beat's
     // proportions, then runs them. Guarded so only the first caller wins —
     // real metadata beats the fallback timer if both race.
     let scheduled = false;
@@ -861,8 +863,10 @@ int main() {
       scheduled = true;
 
       const warmupMs = Math.max(Math.round(totalMs * BOOT_WARMUP_SHARE), 120);
-      const riseMs = Math.round(totalMs * BOOT_RISE_SHARE);
-      const driveMs = Math.max(totalMs - warmupMs - riseMs, 200);
+      const driveMs = Math.max(totalMs - warmupMs, 200);
+      // The slowest drive pins here — that exact frame is the hard cut.
+      const cutAtMs = warmupMs +
+        Math.round(driveMs * (BOOT_BAR_FAST_SHARE + BOOT_BAR_SLOW_SHARE));
 
       // Stretch the pure-CSS phases to match the same clock, then fire the
       // warm-up line in sync with the chime.
@@ -888,7 +892,8 @@ int main() {
           const fill = bar.querySelector(".boot-bar-fill");
           const pctEl = bar.querySelector(".boot-bar-pct");
           // Staggered speeds so the drives finish out of step, like real churn.
-          const duration = Math.round(driveMs * (0.6 + 0.3 * ((i % 3) / 2)));
+          const duration = Math.round(driveMs *
+            (BOOT_BAR_FAST_SHARE + BOOT_BAR_SLOW_SHARE * ((i % 3) / 2)));
           let start = null;
           function tick(now) {
             if (start === null) start = now;
@@ -904,35 +909,20 @@ int main() {
         });
       }, warmupMs);
 
-      // Phase 3: rise to full brightness across the sound's tail, then strip
-      // the boot layer entirely and hand off to the machine hum.
+      // Hard cut: the instant the slowest drive pins at 100%, the boot layer
+      // vanishes outright and whatever lives underneath (the gateway on a
+      // cold boot, the archive on a reload) is simply there. No crossfade.
       setTimeout(function () {
-        if (crtFrame) {
-          crtFrame.style.animationDuration = riseMs + "ms";
-          crtFrame.classList.add("power-rise");
+        if (!overlay.classList.contains("boot-active")) return;
+        overlay.classList.remove("boot-active");
+        overlay.style.animationDuration = "";
+        // Hand focus to the access key prompt now that the glass is lit.
+        const gateway = document.getElementById("terminal-gateway");
+        const passwordInput = document.getElementById("gateway-password");
+        if (gateway && passwordInput && gateway.classList.contains("gateway-active")) {
+          passwordInput.focus();
         }
-        overlay.style.animationDuration = riseMs + "ms";
-        overlay.classList.add("boot-fade");
-        setTimeout(function () {
-          overlay.classList.remove("boot-active", "boot-fade");
-          overlay.style.animationDuration = "";
-          if (crtFrame) {
-            crtFrame.classList.remove("power-rise");
-            crtFrame.style.animationDuration = "";
-          }
-          // The machine hum takes over the moment the glass is lit — unless
-          // the archive already reached its end state on a prior session.
-          if (!getRevealedPostIds().includes(LORE_POST_ID)) {
-            startPcLoop();
-          }
-          // Hand focus to the access key prompt once the glass is lit.
-          const gateway = document.getElementById("terminal-gateway");
-          const passwordInput = document.getElementById("gateway-password");
-          if (gateway && passwordInput && gateway.classList.contains("gateway-active")) {
-            passwordInput.focus();
-          }
-        }, riseMs);
-      }, warmupMs + driveMs);
+      }, cutAtMs);
     }
 
     // The power switch: browsers refuse to make sound until the user has
@@ -959,6 +949,13 @@ int main() {
             playback.catch(function () { /* blocked or missing: stay silent */ });
           }
         } catch (err) { /* missing file: fall back to default pacing */ }
+
+        // The machine hum spins up WITH the chime, not after it, so both
+        // read as one continuous power-on sound. Skipped only if the archive
+        // already reached its end state on a prior session.
+        if (!getRevealedPostIds().includes(LORE_POST_ID)) {
+          startPcLoop();
+        }
 
         if (!reducedMotion && bootAudio) {
           // Startup.wav's real duration wins once known; this fallback timer

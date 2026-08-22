@@ -1498,10 +1498,11 @@ body.atmosphere #crt {
 
 /* --------------------------------------------------------------------------
    BOOT SEQUENCE :: MONITOR POWER-ON
-   Three phases, paced by js/main.js (runBootSequence):
+   Two visual phases, paced by js/main.js (runBootSequence):
      1. .boot-warmup  — the classic CRT power-on line snapping open from black
      2. .boot-content — spinner widget churning + POST log lines + drive bars
-     3. #crt.power-rise + overlay fade — screen climbs to full brightness
+   When the slowest bar pins at 100%, JS strips #boot-overlay outright —
+   a hard cut, no crossfade — and the gateway/archive is simply there.
    -------------------------------------------------------------------------- */
 #boot-overlay {
   position: fixed;
@@ -1693,27 +1694,6 @@ body.atmosphere #crt {
   text-shadow: var(--text-glow);
 }
 
-/* Phase 3 — the whole screen climbs to full brightness as the boot layer
-   dissolves away. Class is added by JS, then removed after the handoff. */
-#crt.power-rise {
-  animation: crt-power-rise 800ms ease-out both;
-}
-
-@keyframes crt-power-rise {
-  0%   { filter: brightness(0.25) contrast(1.35); }
-  35%  { filter: brightness(0.65); }
-  70%  { filter: brightness(1.18) saturate(1.15); }
-  100% { filter: brightness(1) contrast(1); }
-}
-
-#boot-overlay.boot-fade {
-  animation: boot-overlay-fade 500ms ease-in forwards;
-}
-
-@keyframes boot-overlay-fade {
-  to { opacity: 0; }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .boot-warmup {
     animation-duration: 1ms;
@@ -1730,10 +1710,5 @@ body.atmosphere #crt {
 
   .boot-spinner {
     animation-duration: 2.5s;
-  }
-
-  #crt.power-rise,
-  #boot-overlay.boot-fade {
-    animation-duration: 250ms;
   }
 }
