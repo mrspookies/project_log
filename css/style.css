@@ -761,6 +761,18 @@ body.atmosphere #crt {
   opacity: 0.6;
 }
 
+/* While an event owns the screen the prompt locks hard: the field is
+   disabled by JS, the prompt dims, and the placeholder flips to a red
+   SEQUENCE IN PROGRESS until the haunting/sequence lets go. */
+.clue-input-line--locked .prompt {
+  opacity: 0.35;
+}
+
+.clue-input-line--locked input::placeholder {
+  color: #ff5555;
+  opacity: 0.7;
+}
+
 /* Locked entries carry no key prompt of their own — all typed input lives
    in the ACTIVE_PROBE terminal. This box just points the player at it. */
 .entry-lock-box {

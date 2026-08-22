@@ -593,6 +593,9 @@ return 0;
   // The bars appear one after another (this stagger), then all run at their
   // original speeds in reverse of their original fill direction.
   const CREDITS_BAR_DELAY_MS = 400;
+  // Random extra delay on top of the stagger so the teardown wall looks
+  // chaotic rather than queued.
+  const CREDITS_BAR_JITTER_MS = 400;
   const CREDITS_TAGLINE = "A Spookies_Workshop Experience";
   const CREDITS_LINK = "https://store.steampowered.com/app/4255090/Egregore/";
   const EXPERIENCE_AGAIN_PROMPT_TEXT = "EXPERIENCE AGAIN? y/n";
@@ -613,22 +616,22 @@ return 0;
   let creditsBarsCache = null;
   function getCreditsBars() {
     if (!creditsBarsCache) {
-      // `direction` is the credits-roll reversal: originally-filling bars now
-      // EMPTY (100 -> 0), originally-draining bars now FILL (0 -> 100).
+      // The whole wall reads as one big teardown: every row uninstalls,
+      // removes, or batch-unloads something, and every bar drains 100 -> 0.
       creditsBarsCache = [
-        { label: "APPLYING UPDATE...", ticks: ATMOSPHERE_PROGRESS_TICKS, tickMs: ATMOSPHERE_PROGRESS_TICK_MS, direction: "empty" },
-        { label: "EXTRACTING BELIEF", ticks: BELIEF_PROGRESS_TICKS, tickMs: BELIEF_PROGRESS_TICK_MS, direction: "empty" },
-        { label: "UNINSTALLING_SOUL", ticks: LIMBO_PROGRESS_TICKS, tickMs: LIMBO_PROGRESS_TICK_MS, direction: "fill" },
-        { label: "UNINSTALLING_MIND", ticks: LIMBO_PROGRESS_TICKS, tickMs: LIMBO_PROGRESS_TICK_MS, direction: "fill" },
-        { label: "UNINSTALLING_CARE", ticks: LIMBO_PROGRESS_TICKS, tickMs: LIMBO_PROGRESS_TICK_MS, direction: "fill" },
-        { label: "UNINSTALLING_WORRY", ticks: LIMBO_PROGRESS_TICKS, tickMs: LIMBO_PROGRESS_TICK_MS, direction: "fill" },
-        { label: "UNINSTALLING_PEACE", ticks: LIMBO_PROGRESS_TICKS, tickMs: LIMBO_PROGRESS_TICK_MS, direction: "fill" },
-        { label: "INITIALIZING LIMBO.EXE", ticks: LIMBO_PROGRESS_TICKS, tickMs: LIMBO_PROGRESS_TICK_MS, direction: "empty" },
-        { label: "EXTRACTING_BKA_L VECTOR...", ticks: 20, tickMs: HELL_BOOT_TICK_MS, direction: "empty" },
-        { label: "LOADING: pain.exe", ticks: LIMBO_PROGRESS_TICKS, tickMs: LIMBO_PROGRESS_TICK_MS, direction: "empty" },
-        { label: "LOADING: torment.bat", ticks: LIMBO_PROGRESS_TICKS, tickMs: LIMBO_PROGRESS_TICK_MS, direction: "empty" },
-        { label: "LOADING: suffering.md", ticks: LIMBO_PROGRESS_TICKS, tickMs: LIMBO_PROGRESS_TICK_MS, direction: "empty" },
-        { label: "Auth.Code/SEARCH INIT", ticks: LIMBO_PROGRESS_TICKS, tickMs: LIMBO_PROGRESS_TICK_MS, direction: "empty" }
+        { label: "UNINSTALLING_UPDATE", ticks: ATMOSPHERE_PROGRESS_TICKS, tickMs: ATMOSPHERE_PROGRESS_TICK_MS },
+        { label: "UNINSTALLING_BELIEF", ticks: BELIEF_PROGRESS_TICKS, tickMs: BELIEF_PROGRESS_TICK_MS },
+        { label: "UNINSTALLING_SOUL", ticks: LIMBO_PROGRESS_TICKS, tickMs: LIMBO_PROGRESS_TICK_MS },
+        { label: "REMOVING_MIND", ticks: LIMBO_PROGRESS_TICKS, tickMs: LIMBO_PROGRESS_TICK_MS },
+        { label: "BATCH_UNLOAD: CARE", ticks: LIMBO_PROGRESS_TICKS, tickMs: LIMBO_PROGRESS_TICK_MS },
+        { label: "UNINSTALLING_WORRY", ticks: LIMBO_PROGRESS_TICKS, tickMs: LIMBO_PROGRESS_TICK_MS },
+        { label: "REMOVING_PEACE", ticks: LIMBO_PROGRESS_TICKS, tickMs: LIMBO_PROGRESS_TICK_MS },
+        { label: "BATCH_UNLOAD: LIMBO.EXE", ticks: LIMBO_PROGRESS_TICKS, tickMs: LIMBO_PROGRESS_TICK_MS },
+        { label: "UNINSTALLING_BKA_L VECTOR...", ticks: 20, tickMs: HELL_BOOT_TICK_MS },
+        { label: "BATCH_UNLOAD: pain.exe", ticks: LIMBO_PROGRESS_TICKS, tickMs: LIMBO_PROGRESS_TICK_MS },
+        { label: "REMOVING: torment.bat", ticks: LIMBO_PROGRESS_TICKS, tickMs: LIMBO_PROGRESS_TICK_MS },
+        { label: "BATCH_UNLOAD: suffering.md", ticks: LIMBO_PROGRESS_TICKS, tickMs: LIMBO_PROGRESS_TICK_MS },
+        { label: "REMOVING: AUTH_CODE_CACHE", ticks: LIMBO_PROGRESS_TICKS, tickMs: LIMBO_PROGRESS_TICK_MS }
       ];
     }
     return creditsBarsCache;
@@ -2842,6 +2845,31 @@ int main() {
   // This is the progression gate for the sequential escape-room loop —
   // reveal happens only after the haunting finishes, keeping each step
   // controllable and additive.
+  // True while ANY event owns the screen: hauntings, the auto update/LIMBO/
+  // handshake/egregore sequences, the belief bar, or the credits wall.
+  // While this is up the prompt is hard-locked — watch, don't type. (The
+  // y/n prompts are deliberately NOT busy states: they need typing.)
+  function isTerminalBusy() {
+    return hauntingActive || autoSequenceActive || limboSequenceActive ||
+      entry008SequenceActive || egregoreSequenceActive || beliefExtracting ||
+      creditsActive;
+  }
+
+  // Glues the prompt's disabled state to the busy flags no matter where they
+  // get flipped — a short poll can't miss transitions the way scattered
+  // enable/disable calls can (reset paths bail early all over the place).
+  function syncTerminalInputLock() {
+    const input = document.getElementById("clue-input");
+    if (!input) return;
+    const line = input.closest(".clue-input-line");
+    const busy = isTerminalBusy();
+    if (input.disabled === busy) return;
+    input.disabled = busy;
+    if (busy) input.value = "";
+    if (line) line.classList.toggle("clue-input-line--locked", busy);
+    input.placeholder = busy ? "SEQUENCE IN PROGRESS" : "AWAITING RESPONSE";
+  }
+
   function initClueTerminal() {
     const input = document.getElementById("clue-input");
     if (!input) return;
@@ -2850,12 +2878,18 @@ int main() {
     if (!sessionStorage.getItem(TERMINAL_CLEARED_KEY)) {
       appendClue("AWAITING FIRST AUTH SEQUENCE...", "clue-line--status");
     }
+    // Hard lock while any event runs: swallow keystrokes outright. The sync
+    // poll below also disables the field itself; this guard covers the gap
+    // between a flag flipping and the next poll tick.
     input.addEventListener("keydown", function (e) {
+      if (isTerminalBusy()) { e.preventDefault(); return; }
       if (e.key !== "Enter") return;
       const cmd = input.value.trim().toLowerCase();
       input.value = "";
       handleClueCommand(cmd);
     });
+    syncTerminalInputLock();
+    setInterval(syncTerminalInputLock, 200);
     // Clicking anywhere on the terminal drops focus into the prompt line, so
     // the outlined box reads as one big input surface.
     const terminalBox = document.querySelector(".clue-terminal");
@@ -3270,7 +3304,7 @@ int main() {
 
   // One reversed credits load bar: originally-filling bars EMPTY (100 -> 0),
   // originally-draining bars FILL (0 -> 100), each at its original speed.
-  function runCreditsBar(bar) {
+  function runCreditsBar(bar, ticks, tickMs) {
     const gen = sceneGeneration;
     const board = document.getElementById("clue-board");
     if (!board) return;
@@ -3283,40 +3317,41 @@ int main() {
     const timer = setInterval(function () {
       if (gen !== sceneGeneration) { clearInterval(timer); return; }
       step++;
-      let pct;
-      if (bar.direction === "fill") {
-        pct = Math.min(Math.round((step / bar.ticks) * 100), 100);
-      } else {
-        pct = Math.max(Math.round((1 - step / bar.ticks) * 100), 0);
-      }
+      // Every bar drains 100 -> 0 — no fills anywhere in the teardown.
+      const pct = Math.max(Math.round((1 - step / ticks) * 100), 0);
       const filled = Math.round((pct / 100) * 20);
       line.textContent =
         "[" + "█".repeat(filled) + "░".repeat(20 - filled) + "] " + String(pct).padStart(3, " ") + "%";
       board.scrollTop = board.scrollHeight;
-      if (step >= bar.ticks) clearInterval(timer);
-    }, bar.tickMs);
+      if (step >= ticks) clearInterval(timer);
+    }, tickMs);
   }
 
-  // The credits roll: every load bar appears one after another (a short
-  // stagger), all running at once in reverse of their original direction.
-  // When the longest of them finishes, the CREDITS.md block fades in.
+  // The credits roll: every uninstall bar pops one after another with a
+  // random extra offset and a randomized drain speed, so the wall reads as a
+  // messy parallel teardown instead of an orderly queue. When the longest of
+  // them finishes, the CREDITS.md block fades in.
   function runCredits() {
     if (creditsActive) return;
     creditsActive = true;
     const board = document.getElementById("clue-board");
     if (board) board.innerHTML = "";
     const bars = getCreditsBars();
-    // The load bars swarm onto the board under Flies.mp3 the instant they pop.
+    // The bars swarm onto the board under Flies.mp3 the instant they pop.
     new Audio(FLIES_PATH).play().catch(function () {});
     let total = 0;
     bars.forEach(function (bar, i) {
-      // Each bar starts at its own stagger offset and runs at its own speed,
-      // so the true end is the latest individual (offset + duration), not the
-      // longest bar alone.
-      total = Math.max(total, CREDITS_BAR_DELAY_MS * i + bar.ticks * bar.tickMs);
+      // Random stagger on top of the base cadence plus per-bar speed jitter;
+      // the true end is the latest individual (offset + duration).
+      const offset = CREDITS_BAR_DELAY_MS * i +
+        Math.floor(Math.random() * CREDITS_BAR_JITTER_MS);
+      const drainTicks = bar.ticks;
+      const drainTickMs = Math.max(25,
+        Math.round(bar.tickMs * (0.55 + Math.random() * 0.9)));
+      total = Math.max(total, offset + drainTicks * drainTickMs);
       setTimeout(function () {
-        if (creditsActive) runCreditsBar(bar);
-      }, CREDITS_BAR_DELAY_MS * i);
+        if (creditsActive) runCreditsBar(bar, drainTicks, drainTickMs);
+      }, offset);
     });
     setTimeout(function () {
       if (!creditsActive) return;
@@ -3368,7 +3403,9 @@ int main() {
     block.classList.add("clue-credits--in");
 
     // One last choice under the credits: `y` runs esrever to replay the
-    // experience, `n` signs off.
+    // experience, `n` signs off. The bar wall is done here, so the terminal
+    // unlocks for the answer.
+    creditsActive = false;
     appendClue(EXPERIENCE_AGAIN_PROMPT_TEXT, "clue-line--status");
     experienceAgainPending = true;
   }
