@@ -118,15 +118,29 @@
   const ACCESS_KEY = "t3m3t.no2c3";
   const GATEWAY_STORAGE_KEY = "omegaterm_unlocked";
 
-  // Boot sequence: a brief monitor/computer power-on show that plays once per
-  // page load before anything underneath is revealed. Drop a power-on sound
-  // at BOOT_AUDIO_PATH (assets/audio/UI/Boot.mp3) and it plays automatically;
-  // browsers hold audio until the first user gesture, so a cold first load
-  // may stay silent while reloads after any click/keypress will chime.
-  const BOOT_AUDIO_PATH = "assets/audio/UI/Boot.mp3";
+  // Boot sequence: the monitor/computer power-on show that plays once per
+  // page load before anything underneath is revealed. Startup.wav drives the
+  // pacing — the three phases stretch or compress so the whole show lasts
+  // exactly as long as the sound (the constants below are only the fallback
+  // beat if the audio can't be read). Browsers hold audio until the first
+  // user gesture, so a cold first load may stay silent while reloads after
+  // any click/keypress will chime.
+  const BOOT_AUDIO_PATH = "assets/audio/Startup.wav";
   const BOOT_WARMUP_MS = 650; // black -> CRT warm-up line dissolves
   const BOOT_DRIVE_MS = 1500; // platter churn: POST log + drive bars
   const BOOT_RISE_MS = 700;   // brightness rise + overlay dissolve
+  const BOOT_FALLBACK_TOTAL_MS = BOOT_WARMUP_MS + BOOT_DRIVE_MS + BOOT_RISE_MS;
+  // Phase proportions of the fallback beat, reused to slice whatever total
+  // duration Startup.wav reports into warm-up / churn / rise.
+  const BOOT_WARMUP_SHARE = BOOT_WARMUP_MS / BOOT_FALLBACK_TOTAL_MS;
+  const BOOT_RISE_SHARE = BOOT_RISE_MS / BOOT_FALLBACK_TOTAL_MS;
+
+  // The machine hum: PC_Loop.wav starts looping the moment boot hands off and
+  // runs underneath everything until the final log reveal (ENTRY 010) — the
+  // exact endpoint shared by _Loop_b007.mp3 and Storm.mp3 — and it also stops
+  // on an `esrever` reset like every other drone.
+  const PC_LOOP_PATH = "assets/audio/PC_Loop.wav";
+  const PC_LOOP_VOLUME = 0.4;
   const BOOT_LOG_LINES = [
     "OMEGA_BIOS v1.983 .................. OK",
     "DETECTING PHOSPHOR ARRAY ........... OK",
@@ -717,6 +731,8 @@ int main() {
   // Storm.mp3 loop begun by the hell event; shares the ambient drone's exact
   // lifecycle so they stop together at the final log reveal.
   let stormLoop = null;
+  // PC_Loop.wav machine hum begun by the boot sequence; same shared endpoint.
+  let pcLoop = null;
 
   // The '@' note payload on ENTRY 004: click state resets each session, but
   // once revealed the image persists via the session media override.
@@ -814,83 +830,130 @@ int main() {
   // The power-on boot show: warm-up line -> spinner/log/bars churn -> the
   // screen rises to full brightness and dissolves into whatever is underneath
   // (the gateway on a cold boot, the archive on a mid-session reload). The
-  // rest of the page keeps initializing while it plays.
+  // whole show is paced by Startup.wav's real length; the rest of the page
+  // keeps initializing while it plays.
   function runBootSequence() {
     const overlay = document.getElementById("boot-overlay");
     if (!overlay) return;
 
     const reducedMotion = window.matchMedia &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const warmupMs = reducedMotion ? 120 : BOOT_WARMUP_MS;
-    const driveMs = reducedMotion ? 300 : BOOT_DRIVE_MS;
-    const riseMs = reducedMotion ? 250 : BOOT_RISE_MS;
 
     overlay.classList.add("boot-active");
 
-    // Power-on sound hook: a silent no-op until the file exists at
-    // BOOT_AUDIO_PATH (autoplay rules may also defer it to first gesture).
+    // Power-on chime: plays at t=0 and its duration becomes the length of
+    // the show. Autoplay rules may hold it until the first user gesture.
+    let bootAudio = null;
     try {
-      const bootAudio = new Audio(BOOT_AUDIO_PATH);
+      bootAudio = new Audio(BOOT_AUDIO_PATH);
       bootAudio.volume = 0.8;
       const playback = bootAudio.play();
       if (playback && typeof playback.catch === "function") {
         playback.catch(function () { /* blocked or missing: stay silent */ });
       }
-    } catch (err) { /* missing file: stay silent */ }
+    } catch (err) { /* missing file: fall back to default pacing */ }
 
     const content = overlay.querySelector(".boot-content");
     const logEl = document.getElementById("boot-log");
     const bars = Array.prototype.slice.call(overlay.querySelectorAll(".boot-bar"));
+    const warmupEl = overlay.querySelector(".boot-warmup");
     const crtFrame = document.getElementById("crt");
 
-    // Phase 1 ends: light up the readout, stream the POST lines, churn bars.
-    setTimeout(function () {
-      if (content) content.classList.add("boot-show");
+    // Slices totalMs into the three phases using the fallback beat's
+    // proportions, then runs them. Guarded so only the first caller wins —
+    // real metadata beats the fallback timer if both race.
+    let scheduled = false;
+    function scheduleBootShow(totalMs) {
+      if (scheduled) return;
+      scheduled = true;
 
-      BOOT_LOG_LINES.forEach(function (line, i) {
-        setTimeout(function () {
-          if (!logEl) return;
-          const row = document.createElement("div");
-          row.textContent = line;
-          logEl.appendChild(row);
-        }, Math.round((driveMs * 0.8) * (i / BOOT_LOG_LINES.length)));
-      });
+      const warmupMs = Math.max(Math.round(totalMs * BOOT_WARMUP_SHARE), 120);
+      const riseMs = Math.round(totalMs * BOOT_RISE_SHARE);
+      const driveMs = Math.max(totalMs - warmupMs - riseMs, 200);
 
-      bars.forEach(function (bar, i) {
-        const fill = bar.querySelector(".boot-bar-fill");
-        const pctEl = bar.querySelector(".boot-bar-pct");
-        // Staggered speeds so the drives finish out of step, like real churn.
-        const duration = Math.round(driveMs * (0.6 + 0.3 * ((i % 3) / 2)));
-        let start = null;
-        function tick(now) {
-          if (start === null) start = now;
-          const p = Math.min(Math.max((now - start) / duration, 0), 1);
-          const value = Math.round(p * 100);
-          if (fill) fill.style.width = value + "%";
-          if (pctEl) pctEl.textContent = value + "%";
-          if (p < 1 && overlay.classList.contains("boot-active")) {
-            requestAnimationFrame(tick);
-          }
-        }
-        requestAnimationFrame(tick);
-      });
-    }, warmupMs);
+      // Stretch the pure-CSS phases to match the same clock.
+      if (warmupEl) warmupEl.style.animationDuration = warmupMs + "ms";
 
-    // Phase 3: rise to full brightness, then strip the boot layer entirely.
-    setTimeout(function () {
-      if (crtFrame) crtFrame.classList.add("power-rise");
-      overlay.classList.add("boot-fade");
+      // Phase 1 ends: light up the readout, stream the POST lines, churn bars.
       setTimeout(function () {
-        overlay.classList.remove("boot-active", "boot-fade");
-        if (crtFrame) crtFrame.classList.remove("power-rise");
-        // Hand focus to the access key prompt once the glass is lit.
-        const gateway = document.getElementById("terminal-gateway");
-        const passwordInput = document.getElementById("gateway-password");
-        if (gateway && passwordInput && gateway.classList.contains("gateway-active")) {
-          passwordInput.focus();
+        if (content) content.classList.add("boot-show");
+
+        BOOT_LOG_LINES.forEach(function (line, i) {
+          setTimeout(function () {
+            if (!logEl) return;
+            const row = document.createElement("div");
+            row.textContent = line;
+            logEl.appendChild(row);
+          }, Math.round((driveMs * 0.8) * (i / BOOT_LOG_LINES.length)));
+        });
+
+        bars.forEach(function (bar, i) {
+          const fill = bar.querySelector(".boot-bar-fill");
+          const pctEl = bar.querySelector(".boot-bar-pct");
+          // Staggered speeds so the drives finish out of step, like real churn.
+          const duration = Math.round(driveMs * (0.6 + 0.3 * ((i % 3) / 2)));
+          let start = null;
+          function tick(now) {
+            if (start === null) start = now;
+            const p = Math.min(Math.max((now - start) / duration, 0), 1);
+            const value = Math.round(p * 100);
+            if (fill) fill.style.width = value + "%";
+            if (pctEl) pctEl.textContent = value + "%";
+            if (p < 1 && overlay.classList.contains("boot-active")) {
+              requestAnimationFrame(tick);
+            }
+          }
+          requestAnimationFrame(tick);
+        });
+      }, warmupMs);
+
+      // Phase 3: rise to full brightness across the sound's tail, then strip
+      // the boot layer entirely and hand off to the machine hum.
+      setTimeout(function () {
+        if (crtFrame) {
+          crtFrame.style.animationDuration = riseMs + "ms";
+          crtFrame.classList.add("power-rise");
         }
-      }, riseMs);
-    }, warmupMs + driveMs);
+        overlay.style.animationDuration = riseMs + "ms";
+        overlay.classList.add("boot-fade");
+        setTimeout(function () {
+          overlay.classList.remove("boot-active", "boot-fade");
+          overlay.style.animationDuration = "";
+          if (crtFrame) {
+            crtFrame.classList.remove("power-rise");
+            crtFrame.style.animationDuration = "";
+          }
+          // The machine hum takes over the moment the glass is lit — unless
+          // the archive already reached its end state on a prior session.
+          if (!getRevealedPostIds().includes(LORE_POST_ID)) {
+            startPcLoop();
+          }
+          // Hand focus to the access key prompt once the glass is lit.
+          const gateway = document.getElementById("terminal-gateway");
+          const passwordInput = document.getElementById("gateway-password");
+          if (gateway && passwordInput && gateway.classList.contains("gateway-active")) {
+            passwordInput.focus();
+          }
+        }, riseMs);
+      }, warmupMs + driveMs);
+    }
+
+    if (reducedMotion) {
+      scheduleBootShow(120 + 300 + 250);
+    } else {
+      // Startup.wav's real duration wins once known; this fallback timer only
+      // covers a missing or unreadable file so the show always ends.
+      if (bootAudio) {
+        bootAudio.addEventListener("loadedmetadata", function () {
+          if (Number.isFinite(bootAudio.duration) && bootAudio.duration > 0) {
+            scheduleBootShow(bootAudio.duration * 1000);
+          }
+        });
+      }
+      setTimeout(function () {
+        scheduleBootShow(BOOT_FALLBACK_TOTAL_MS);
+      }, 500);
+    }
   }
 
   function initGateway() {
@@ -1918,6 +1981,24 @@ int main() {
     stormLoop = null;
   }
 
+  // PC_Loop.wav machine hum started by the boot sequence. Mirrors the
+  // ambient/storm drones' endpoint exactly — silenced by the final log
+  // reveal and by any esrever reset.
+  function startPcLoop() {
+    if (pcLoop) return;
+    pcLoop = new Audio(PC_LOOP_PATH);
+    pcLoop.loop = true;
+    pcLoop.volume = PC_LOOP_VOLUME;
+    pcLoop.play().catch(function () { pcLoop.src = ""; });
+  }
+
+  function stopPcLoop() {
+    if (!pcLoop) return;
+    pcLoop.pause();
+    pcLoop.src = "";
+    pcLoop = null;
+  }
+
   // Fake source dump the archive "runs" during the LIMBO phase, immediately
   // after ENTRY 005 is decrypted. String.raw keeps every backslash (asm
   // \t / \n, std::endl escapes) as literal text.
@@ -2550,12 +2631,13 @@ int main() {
 
   function revealPost(id, playSolve) {
     saveRevealedPostId(id);
-    // The final log unlock is the end of every drone: the ambient loop and
-    // the storm loop (started by the hell event) both stop together, closed
-    // out by a burst of static.
+    // The final log unlock is the end of every drone: the ambient loop, the
+    // storm loop (started by the hell event), and the boot-time machine hum
+    // all stop together, closed out by a burst of static.
     if (id === AMBIENT_LOOP_STOP_POST_ID) {
       stopAmbientLoop();
       stopStormLoop();
+      stopPcLoop();
       new Audio(UI_BURST_PATH).play().catch(function () {});
     }
     renderPosts();
@@ -3043,6 +3125,7 @@ int main() {
     sceneGeneration++;
     stopAmbientLoop();
     stopStormLoop();
+    stopPcLoop();
     stopRgbCycle();
     stopRainbowKeySpan();
     if (entry008RiddleTimer) { clearInterval(entry008RiddleTimer); entry008RiddleTimer = null; }
