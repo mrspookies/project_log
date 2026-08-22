@@ -11,6 +11,40 @@
 <body>
 
   <!-- ============================================================
+       BOOT SEQUENCE :: MONITOR POWER-ON
+       Plays once per page load, then dissolves to reveal whatever
+       is underneath (gateway on a cold boot, archive on a reload).
+       Audio hook: js/main.js BOOT_AUDIO_PATH.
+       ============================================================ -->
+  <div id="boot-overlay" aria-hidden="true">
+    <div class="boot-warmup"></div>
+    <div class="boot-content">
+      <div class="boot-spinner">
+        <span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span>
+      </div>
+      <div id="boot-log" class="boot-log"></div>
+      <div class="boot-bars">
+        <div class="boot-bar">
+          <span class="boot-bar-label">MEM_CHECK</span>
+          <span class="boot-bar-track"><span class="boot-bar-fill"></span></span>
+          <span class="boot-bar-pct">0%</span>
+        </div>
+        <div class="boot-bar">
+          <span class="boot-bar-label">ARCHIVE_INDEX</span>
+          <span class="boot-bar-track"><span class="boot-bar-fill"></span></span>
+          <span class="boot-bar-pct">0%</span>
+        </div>
+        <div class="boot-bar">
+          <span class="boot-bar-label">PHOSPHOR_CAL</span>
+          <span class="boot-bar-track"><span class="boot-bar-fill"></span></span>
+          <span class="boot-bar-pct">0%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
        TERMINAL FRAME
        ============================================================ -->
   <div id="crt" class="crt-frame">

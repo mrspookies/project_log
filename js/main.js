@@ -118,6 +118,24 @@
   const ACCESS_KEY = "t3m3t.no2c3";
   const GATEWAY_STORAGE_KEY = "omegaterm_unlocked";
 
+  // Boot sequence: a brief monitor/computer power-on show that plays once per
+  // page load before anything underneath is revealed. Drop a power-on sound
+  // at BOOT_AUDIO_PATH (assets/audio/UI/Boot.mp3) and it plays automatically;
+  // browsers hold audio until the first user gesture, so a cold first load
+  // may stay silent while reloads after any click/keypress will chime.
+  const BOOT_AUDIO_PATH = "assets/audio/UI/Boot.mp3";
+  const BOOT_WARMUP_MS = 650; // black -> CRT warm-up line dissolves
+  const BOOT_DRIVE_MS = 1500; // platter churn: POST log + drive bars
+  const BOOT_RISE_MS = 700;   // brightness rise + overlay dissolve
+  const BOOT_LOG_LINES = [
+    "OMEGA_BIOS v1.983 .................. OK",
+    "DETECTING PHOSPHOR ARRAY ........... OK",
+    "SPINNING UP ARCHIVE PLATTERS ....... OK",
+    "MOUNTING /dev/project_log .......... OK",
+    "SYNCING VISITOR COUNTER ............ OK",
+    "UNPACKING CONSCIOUS PAYLOAD ...... 100%"
+  ];
+
   const SOLVED_POSTS_KEY = "omegaterm_solved_posts";
 
   // Reveal progression is stored as a plain list of unlocked ids, NOT as full
@@ -792,6 +810,88 @@ int main() {
     hauntingActive = false;
     restoreStatus();
   } 
+
+  // The power-on boot show: warm-up line -> spinner/log/bars churn -> the
+  // screen rises to full brightness and dissolves into whatever is underneath
+  // (the gateway on a cold boot, the archive on a mid-session reload). The
+  // rest of the page keeps initializing while it plays.
+  function runBootSequence() {
+    const overlay = document.getElementById("boot-overlay");
+    if (!overlay) return;
+
+    const reducedMotion = window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const warmupMs = reducedMotion ? 120 : BOOT_WARMUP_MS;
+    const driveMs = reducedMotion ? 300 : BOOT_DRIVE_MS;
+    const riseMs = reducedMotion ? 250 : BOOT_RISE_MS;
+
+    overlay.classList.add("boot-active");
+
+    // Power-on sound hook: a silent no-op until the file exists at
+    // BOOT_AUDIO_PATH (autoplay rules may also defer it to first gesture).
+    try {
+      const bootAudio = new Audio(BOOT_AUDIO_PATH);
+      bootAudio.volume = 0.8;
+      const playback = bootAudio.play();
+      if (playback && typeof playback.catch === "function") {
+        playback.catch(function () { /* blocked or missing: stay silent */ });
+      }
+    } catch (err) { /* missing file: stay silent */ }
+
+    const content = overlay.querySelector(".boot-content");
+    const logEl = document.getElementById("boot-log");
+    const bars = Array.prototype.slice.call(overlay.querySelectorAll(".boot-bar"));
+    const crtFrame = document.getElementById("crt");
+
+    // Phase 1 ends: light up the readout, stream the POST lines, churn bars.
+    setTimeout(function () {
+      if (content) content.classList.add("boot-show");
+
+      BOOT_LOG_LINES.forEach(function (line, i) {
+        setTimeout(function () {
+          if (!logEl) return;
+          const row = document.createElement("div");
+          row.textContent = line;
+          logEl.appendChild(row);
+        }, Math.round((driveMs * 0.8) * (i / BOOT_LOG_LINES.length)));
+      });
+
+      bars.forEach(function (bar, i) {
+        const fill = bar.querySelector(".boot-bar-fill");
+        const pctEl = bar.querySelector(".boot-bar-pct");
+        // Staggered speeds so the drives finish out of step, like real churn.
+        const duration = Math.round(driveMs * (0.6 + 0.3 * ((i % 3) / 2)));
+        let start = null;
+        function tick(now) {
+          if (start === null) start = now;
+          const p = Math.min(Math.max((now - start) / duration, 0), 1);
+          const value = Math.round(p * 100);
+          if (fill) fill.style.width = value + "%";
+          if (pctEl) pctEl.textContent = value + "%";
+          if (p < 1 && overlay.classList.contains("boot-active")) {
+            requestAnimationFrame(tick);
+          }
+        }
+        requestAnimationFrame(tick);
+      });
+    }, warmupMs);
+
+    // Phase 3: rise to full brightness, then strip the boot layer entirely.
+    setTimeout(function () {
+      if (crtFrame) crtFrame.classList.add("power-rise");
+      overlay.classList.add("boot-fade");
+      setTimeout(function () {
+        overlay.classList.remove("boot-active", "boot-fade");
+        if (crtFrame) crtFrame.classList.remove("power-rise");
+        // Hand focus to the access key prompt once the glass is lit.
+        const gateway = document.getElementById("terminal-gateway");
+        const passwordInput = document.getElementById("gateway-password");
+        if (gateway && passwordInput && gateway.classList.contains("gateway-active")) {
+          passwordInput.focus();
+        }
+      }, riseMs);
+    }, warmupMs + driveMs);
+  }
 
   function initGateway() {
     const gateway = document.getElementById("terminal-gateway");
@@ -3510,6 +3610,7 @@ int main() {
   }
 
   document.addEventListener("DOMContentLoaded", () => {
+    runBootSequence();
     initGateway();
     renderPosts();
     initClueTerminal();

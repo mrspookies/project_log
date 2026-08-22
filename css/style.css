@@ -1495,3 +1495,212 @@ body.atmosphere #crt {
   font-family: inherit;
   font-size: 1rem;
 }
+
+/* --------------------------------------------------------------------------
+   BOOT SEQUENCE :: MONITOR POWER-ON
+   Three phases, paced by js/main.js (runBootSequence):
+     1. .boot-warmup  — the classic CRT power-on line snapping open from black
+     2. .boot-content — spinner widget churning + POST log lines + drive bars
+     3. #crt.power-rise + overlay fade — screen climbs to full brightness
+   -------------------------------------------------------------------------- */
+#boot-overlay {
+  position: fixed;
+  inset: 0;
+  /* Highest layer in the build while it runs; removed from the DOM flow
+     entirely once boot finishes so it never competes with amijok later. */
+  z-index: 9999999;
+  display: none;
+  background: var(--bg-void);
+}
+
+#boot-overlay.boot-active {
+  display: block;
+}
+
+/* Phase 1 — a single phosphor line expands vertically until the whole glass
+   is lit, then dissolves (opacity -> 0) as the content takes over. */
+.boot-warmup {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  background: linear-gradient(
+    to bottom,
+    rgba(51, 255, 102, 0),
+    var(--phosphor-hot) 50%,
+    rgba(51, 255, 102, 0)
+  );
+  box-shadow: 0 0 24px 6px rgba(51, 255, 102, 0.55);
+  opacity: 0;
+  transform-origin: center;
+  animation: boot-warmup-expand 700ms ease-out forwards;
+  animation-delay: 150ms;
+  pointer-events: none;
+}
+
+@keyframes boot-warmup-expand {
+  0%   { opacity: 0; transform: scaleY(1); }
+  12%  { opacity: 1; transform: scaleY(1); }
+  60%  { opacity: 0.9; transform: scaleY(180); }
+  100% { opacity: 0; transform: scaleY(1400); }
+}
+
+/* Phase 2 — BIOS/POST readout: spinner on top, log lines streaming under it,
+   drive bars churning at the bottom. Hidden until JS flips .boot-show after
+   the warm-up line finishes. */
+.boot-content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 30px;
+  padding: 32px 40px;
+  opacity: 0;
+  transition: opacity 200ms steps(3);
+}
+
+.boot-content.boot-show {
+  opacity: 1;
+}
+
+/* The spinning widget: eight chunky blades with a fading tail, rotating in
+   discrete steps so it reads as mechanical rather than smooth. */
+.boot-spinner {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  animation: boot-spin 0.9s steps(8) infinite;
+}
+
+@keyframes boot-spin {
+  to { transform: rotate(360deg); }
+}
+
+.boot-spinner span {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 8px;
+  height: 18px;
+  margin-left: -4px;
+  background: var(--phosphor);
+  box-shadow: 0 0 8px rgba(51, 255, 102, 0.8);
+  transform-origin: 4px 28px;
+}
+
+/* Trailing opacity tail — blade 1 leads, the rest decay behind it. */
+.boot-spinner span:nth-child(1) { transform: rotate(0deg);   opacity: 1; }
+.boot-spinner span:nth-child(2) { transform: rotate(45deg);  opacity: 0.75; }
+.boot-spinner span:nth-child(3) { transform: rotate(90deg);  opacity: 0.55; }
+.boot-spinner span:nth-child(4) { transform: rotate(135deg); opacity: 0.4; }
+.boot-spinner span:nth-child(5) { transform: rotate(180deg); opacity: 0.3; }
+.boot-spinner span:nth-child(6) { transform: rotate(225deg); opacity: 0.22; }
+.boot-spinner span:nth-child(7) { transform: rotate(270deg); opacity: 0.16; }
+.boot-spinner span:nth-child(8) { transform: rotate(315deg); opacity: 0.1; }
+
+/* Fixed-height log window so streaming lines never shift the layout. */
+.boot-log {
+  min-height: calc(6 * 1.5em);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  letter-spacing: 0.05em;
+  color: var(--phosphor-dim);
+  text-shadow: var(--text-glow);
+  white-space: pre;
+  overflow: hidden;
+}
+
+.boot-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(420px, 80vw);
+}
+
+.boot-bar {
+  display: grid;
+  grid-template-columns: 130px 1fr 48px;
+  gap: 10px;
+  align-items: center;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+}
+
+.boot-bar-label {
+  color: var(--phosphor-dim);
+  text-shadow: var(--text-glow);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.boot-bar-track {
+  display: block;
+  height: 12px;
+  border: 1px solid var(--phosphor-dim);
+  padding: 2px;
+}
+
+/* Striped fill so the bar reads as a hard-drive churn rather than a smooth
+   progress sweep; width is driven by JS every frame. */
+.boot-bar-fill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--phosphor) 0 3px,
+    var(--phosphor-dim) 3px 6px
+  );
+  box-shadow: 0 0 8px rgba(51, 255, 102, 0.7);
+}
+
+.boot-bar-pct {
+  text-align: right;
+  color: var(--phosphor);
+  text-shadow: var(--text-glow);
+}
+
+/* Phase 3 — the whole screen climbs to full brightness as the boot layer
+   dissolves away. Class is added by JS, then removed after the handoff. */
+#crt.power-rise {
+  animation: crt-power-rise 800ms ease-out both;
+}
+
+@keyframes crt-power-rise {
+  0%   { filter: brightness(0.25) contrast(1.35); }
+  35%  { filter: brightness(0.65); }
+  70%  { filter: brightness(1.18) saturate(1.15); }
+  100% { filter: brightness(1) contrast(1); }
+}
+
+#boot-overlay.boot-fade {
+  animation: boot-overlay-fade 500ms ease-in forwards;
+}
+
+@keyframes boot-overlay-fade {
+  to { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-warmup {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+  }
+
+  .boot-content {
+    transition-duration: 1ms;
+  }
+
+  .boot-spinner {
+    animation-duration: 2.5s;
+  }
+
+  #crt.power-rise,
+  #boot-overlay.boot-fade {
+    animation-duration: 250ms;
+  }
+}
