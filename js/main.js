@@ -2862,7 +2862,11 @@ int main() {
     const input = document.getElementById("clue-input");
     if (!input) return;
     const line = input.closest(".clue-input-line");
-    const busy = isTerminalBusy();
+    // A powered-off machine stays locked forever — the poll must never
+    // re-enable the prompt once the sign-off collapse has run.
+    const overlay = document.getElementById("poweroff-overlay");
+    const poweredOff = !!(overlay && overlay.classList.contains("poweroff-active"));
+    const busy = poweredOff || isTerminalBusy();
     if (input.disabled === busy) return;
     input.disabled = busy;
     if (busy) input.value = "";
@@ -3410,13 +3414,42 @@ int main() {
     experienceAgainPending = true;
   }
 
+  // Capture-blocks everything once the machine is off: no keys, no clicks.
+  function swallowInteraction(e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
   // Ends the session. Browsers only honor window.close() for script-opened
-  // windows, so this is best-effort in the web build; the packaged app will
-  // replace this with a hard quit.
+  // windows, so the genuine close is attempted first; if this timer ever
+  // fires, the tab survived and the experience powers off in-fiction
+  // instead — every sound and sequence killed, then the glass collapses to a
+  // dying phosphor dot on a dead black screen. Either way the game is over:
+  // nothing left to type into, click, or see.
   function requestExperienceClose() {
-    try {
-      window.close();
-    } catch (e) {}
+    try { window.close(); } catch (e) { /* refused; fallback below */ }
+
+    setTimeout(function () {
+      // Kill every in-flight sequence and drone before anything else.
+      sceneGeneration++;
+      stopAmbientLoop();
+      stopStormLoop();
+      stopPcLoop();
+
+      const overlay = document.getElementById("poweroff-overlay");
+      const crtFrame = document.getElementById("crt");
+      if (!overlay || !crtFrame) return;
+
+      // Hide the terminal behind the overlay so no ghost UI peeks through
+      // the collapse, then light the dying glass.
+      crtFrame.style.visibility = "hidden";
+      overlay.classList.add("poweroff-active");
+
+      // Belt and suspenders: capture-phase blockers on top of the disabled
+      // prompt, so nothing can interact with a powered-off machine.
+      document.addEventListener("keydown", swallowInteraction, true);
+      document.addEventListener("pointerdown", swallowInteraction, true);
+    }, 200);
   }
 
   // Scales the monospace art down so it fits the terminal width.

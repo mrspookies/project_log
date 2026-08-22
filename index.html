@@ -46,6 +46,15 @@
   </div>
 
   <!-- ============================================================
+       HARD POWER-OFF :: SIGN-OFF FALLBACK
+       When the browser refuses window.close(), the session ends
+       in-fiction: the glass collapses to a dying dot on black.
+       ============================================================ -->
+  <div id="poweroff-overlay" aria-hidden="true">
+    <div class="poweroff-glass"></div>
+  </div>
+
+  <!-- ============================================================
        TERMINAL FRAME
        ============================================================ -->
   <div id="crt" class="crt-frame">

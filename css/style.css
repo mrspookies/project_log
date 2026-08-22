@@ -1772,4 +1772,52 @@ body.atmosphere #crt {
   .lock-redirect {
     animation: none;
   }
+
+  .poweroff-glass {
+    animation-duration: 300ms;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   HARD POWER-OFF :: SIGN-OFF FALLBACK
+   Browsers refuse window.close() for normal tabs, so picking "n" at the
+   EXPERIENCE AGAIN prompt ends the session in-fiction instead: the lit glass
+   collapses to a phosphor line, shrinks to a dying dot, and goes black.
+   js/main.js requestExperienceClose drives it; nothing responds afterwards.
+   -------------------------------------------------------------------------- */
+#poweroff-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999999;
+  display: none;
+  background: var(--bg-void);
+  overflow: hidden;
+}
+
+#poweroff-overlay.poweroff-active {
+  display: block;
+}
+
+.poweroff-glass {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(51, 255, 102, 0),
+    var(--phosphor-hot) 50%,
+    rgba(51, 255, 102, 0)
+  );
+  box-shadow: 0 0 24px 6px rgba(51, 255, 102, 0.55);
+  transform-origin: center;
+  animation: poweroff-collapse 1100ms ease-in forwards;
+}
+
+/* Vertical collapse first (screen -> line), then horizontal (line -> dot). */
+@keyframes poweroff-collapse {
+  0%   { transform: scale(1, 1);        opacity: 0.95; }
+  30%  { transform: scale(1, 0.006);    opacity: 1; }
+  45%  { transform: scale(1, 0.006);    opacity: 1; }
+  70%  { transform: scale(0.25, 0.012); opacity: 1; }
+  85%  { transform: scale(0.04, 0.014); opacity: 0.9; }
+  100% { transform: scale(0, 0.002);    opacity: 0; }
 }
