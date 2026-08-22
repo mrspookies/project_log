@@ -130,6 +130,9 @@
   const BOOT_DRIVE_MS = 1500; // platter churn: POST log + drive bars
   const BOOT_RISE_MS = 700;   // brightness rise + overlay dissolve
   const BOOT_FALLBACK_TOTAL_MS = BOOT_WARMUP_MS + BOOT_DRIVE_MS + BOOT_RISE_MS;
+  // Dead air between the power switch (first keypress/click) and the machine
+  // answering: the startup chime and warm-up line both wait out this beat.
+  const BOOT_POWER_DELAY_MS = 500;
   // Phase proportions of the fallback beat, reused to slice whatever total
   // duration Startup.wav reports into warm-up / churn / rise.
   const BOOT_WARMUP_SHARE = BOOT_WARMUP_MS / BOOT_FALLBACK_TOTAL_MS;
@@ -827,11 +830,12 @@ int main() {
     restoreStatus();
   } 
 
-  // The power-on boot show: warm-up line -> spinner/log/bars churn -> the
-  // screen rises to full brightness and dissolves into whatever is underneath
-  // (the gateway on a cold boot, the archive on a mid-session reload). The
-  // whole show is paced by Startup.wav's real length; the rest of the page
-  // keeps initializing while it plays.
+  // The power-on boot show: a blinking "PRESS ANY KEY" gate (which doubles as
+  // the browser's audio unlock), a short dead-air beat, then warm-up line ->
+  // spinner/log/bars churn -> the screen rises to full brightness and
+  // dissolves into whatever is underneath (the gateway on a cold boot, the
+  // archive on a mid-session reload). The whole show is paced by Startup.wav's
+  // real length; the rest of the page keeps initializing while it plays.
   function runBootSequence() {
     const overlay = document.getElementById("boot-overlay");
     if (!overlay) return;
@@ -841,22 +845,11 @@ int main() {
 
     overlay.classList.add("boot-active");
 
-    // Power-on chime: plays at t=0 and its duration becomes the length of
-    // the show. Autoplay rules may hold it until the first user gesture.
-    let bootAudio = null;
-    try {
-      bootAudio = new Audio(BOOT_AUDIO_PATH);
-      bootAudio.volume = 0.8;
-      const playback = bootAudio.play();
-      if (playback && typeof playback.catch === "function") {
-        playback.catch(function () { /* blocked or missing: stay silent */ });
-      }
-    } catch (err) { /* missing file: fall back to default pacing */ }
-
     const content = overlay.querySelector(".boot-content");
     const logEl = document.getElementById("boot-log");
     const bars = Array.prototype.slice.call(overlay.querySelectorAll(".boot-bar"));
     const warmupEl = overlay.querySelector(".boot-warmup");
+    const promptEl = overlay.querySelector(".boot-prompt");
     const crtFrame = document.getElementById("crt");
 
     // Slices totalMs into the three phases using the fallback beat's
@@ -871,8 +864,12 @@ int main() {
       const riseMs = Math.round(totalMs * BOOT_RISE_SHARE);
       const driveMs = Math.max(totalMs - warmupMs - riseMs, 200);
 
-      // Stretch the pure-CSS phases to match the same clock.
-      if (warmupEl) warmupEl.style.animationDuration = warmupMs + "ms";
+      // Stretch the pure-CSS phases to match the same clock, then fire the
+      // warm-up line in sync with the chime.
+      if (warmupEl) {
+        warmupEl.style.animationDuration = warmupMs + "ms";
+        warmupEl.classList.add("boot-run");
+      }
 
       // Phase 1 ends: light up the readout, stream the POST lines, churn bars.
       setTimeout(function () {
@@ -938,22 +935,50 @@ int main() {
       }, warmupMs + driveMs);
     }
 
-    if (reducedMotion) {
-      scheduleBootShow(120 + 300 + 250);
-    } else {
-      // Startup.wav's real duration wins once known; this fallback timer only
-      // covers a missing or unreadable file so the show always ends.
-      if (bootAudio) {
-        bootAudio.addEventListener("loadedmetadata", function () {
-          if (Number.isFinite(bootAudio.duration) && bootAudio.duration > 0) {
-            scheduleBootShow(bootAudio.duration * 1000);
-          }
-        });
-      }
+    // The power switch: browsers refuse to make sound until the user has
+    // interacted with the page, so the show waits behind the blinking prompt.
+    // The first keypress or click unlocks audio for the whole session — the
+    // startup chime and the PC hum are both guaranteed from then on.
+    let began = false;
+    function beginBoot() {
+      if (began) return;
+      began = true;
+      document.removeEventListener("keydown", beginBoot);
+      document.removeEventListener("pointerdown", beginBoot);
+      if (promptEl) promptEl.classList.add("boot-prompt--hidden");
+
+      // A short dead-air beat after the switch flips, before the machine
+      // answers: chime + warm-up line fire together after this pause.
       setTimeout(function () {
-        scheduleBootShow(BOOT_FALLBACK_TOTAL_MS);
-      }, 500);
+        let bootAudio = null;
+        try {
+          bootAudio = new Audio(BOOT_AUDIO_PATH);
+          bootAudio.volume = 0.8;
+          const playback = bootAudio.play();
+          if (playback && typeof playback.catch === "function") {
+            playback.catch(function () { /* blocked or missing: stay silent */ });
+          }
+        } catch (err) { /* missing file: fall back to default pacing */ }
+
+        if (!reducedMotion && bootAudio) {
+          // Startup.wav's real duration wins once known; this fallback timer
+          // only covers an unreadable file so the show always ends.
+          bootAudio.addEventListener("loadedmetadata", function () {
+            if (Number.isFinite(bootAudio.duration) && bootAudio.duration > 0) {
+              scheduleBootShow(bootAudio.duration * 1000);
+            }
+          });
+          setTimeout(function () {
+            scheduleBootShow(BOOT_FALLBACK_TOTAL_MS);
+          }, 500);
+        } else {
+          scheduleBootShow(120 + 300 + 250);
+        }
+      }, BOOT_POWER_DELAY_MS);
     }
+
+    document.addEventListener("keydown", beginBoot);
+    document.addEventListener("pointerdown", beginBoot);
   }
 
   function initGateway() {

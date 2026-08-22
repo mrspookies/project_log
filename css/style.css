@@ -1535,9 +1535,38 @@ body.atmosphere #crt {
   box-shadow: 0 0 24px 6px rgba(51, 255, 102, 0.55);
   opacity: 0;
   transform-origin: center;
+  pointer-events: none;
+}
+
+/* The line stays dark until the power switch flips: JS adds .boot-run in
+   the same instant the startup chime fires (see runBootSequence). */
+.boot-warmup.boot-run {
   animation: boot-warmup-expand 700ms ease-out forwards;
   animation-delay: 150ms;
-  pointer-events: none;
+}
+
+/* Power switch prompt: blinks on the dead screen until the first keypress
+   or click — the gesture that unlocks audio for the whole session. */
+.boot-prompt {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  letter-spacing: 0.18em;
+  color: var(--phosphor-dim);
+  text-shadow: var(--text-glow);
+  cursor: pointer;
+  animation: boot-prompt-blink 1.2s steps(2, jump-none) infinite;
+}
+
+@keyframes boot-prompt-blink {
+  50% { opacity: 0.25; }
+}
+
+.boot-prompt.boot-prompt--hidden {
+  display: none;
 }
 
 @keyframes boot-warmup-expand {
@@ -1689,6 +1718,10 @@ body.atmosphere #crt {
   .boot-warmup {
     animation-duration: 1ms;
     animation-delay: 0ms;
+  }
+
+  .boot-prompt {
+    animation: none;
   }
 
   .boot-content {
