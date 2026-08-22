@@ -2856,6 +2856,18 @@ int main() {
       input.value = "";
       handleClueCommand(cmd);
     });
+    // Clicking anywhere on the terminal drops focus into the prompt line, so
+    // the outlined box reads as one big input surface.
+    const terminalBox = document.querySelector(".clue-terminal");
+    if (terminalBox) {
+      terminalBox.addEventListener("click", function (e) {
+        if (e.target === input) return;
+        // Don't hijack text/image selection inside the board.
+        const selection = window.getSelection ? String(window.getSelection()) : "";
+        if (selection.length > 0) return;
+        input.focus();
+      });
+    }
   }
 
   function handleClueCommand(cmd) {
@@ -3087,9 +3099,50 @@ int main() {
       print("opening the final log...");
       revealLorePost();
       showFeed();
+    } else if (tryPostKeyInTerminal(cmd, print, warning)) {
+      // The input was a decryption key attempt against a locked entry —
+      // granted or rejected inside the helper, nothing further to do.
     } else {
       print((cmd || "(silence)") + " — " + warning());
     }
+  }
+
+  // Every decryption key is typed into this terminal now — locked entries
+  // carry no prompt of their own anymore. Scans the revealed-but-still-
+  // encrypted records for a match (case-insensitive); a hit decrypts exactly
+  // the way the old in-post inputs did (solve state, chain reveals, static
+  // burst), a miss draws the classic invalid-key line on top of the snark.
+  function tryPostKeyInTerminal(cmd, print, warning) {
+    const attempt = cmd.trim().toUpperCase();
+    if (!attempt) return false;
+    const posts = getPosts();
+    const solved = getSolvedPostIds();
+    const revealed = getRevealedPostIds();
+    let pendingLockSeen = false;
+
+    for (let i = 0; i < posts.length; i++) {
+      const post = posts[i];
+      if (!post.postPassword || post.isLocked !== true) continue;
+      if (solved.includes(post.id) || !revealed.includes(post.id)) continue;
+      pendingLockSeen = true;
+      if (attempt === post.postPassword.toUpperCase()) {
+        print("decrypting ENTRY_" + post.id + "...");
+        saveSolvedPostId(post.id);
+        onPostDecrypted(post.id);
+        renderPosts();
+        // A successful decrypt kicks off a burst of static.
+        new Audio(UI_BURST_PATH).play().catch(function () {});
+        appendClue("ACCESS GRANTED: ENTRY_" + post.id + " DECRYPTED.", "clue-line--success");
+        return true;
+      }
+    }
+
+    if (pendingLockSeen) {
+      appendClue("INVALID KEY. RECORDS REMAIN CORRUPT.", "clue-line--error");
+      print((cmd || "(silence)") + " — " + warning());
+      return true;
+    }
+    return false;
   }
 
   function triggerEsreverEvent() {
@@ -3543,6 +3596,9 @@ int main() {
     const isSolved = getSolvedPostIds().includes(post.id);
 
     if (isPostLocked && !isSolved) {
+      // Locked records carry no key prompt of their own anymore — every
+      // typed input lives in the ACTIVE_PROBE terminal on the right. This
+      // box just tells the player where to aim the key.
       return `
         <article class="entry entry-locked" id="entry-${post.id}" data-entry="${post.id}">
           <div class="entry-meta">
@@ -3550,13 +3606,9 @@ int main() {
             <span class="entry-date">${post.date}</span>
           </div>
           <h2 class="entry-title">${post.title}</h2>
-          <div class="entry-lock-box" style="margin-top: 15px; border: 1px dashed var(--phosphor-dim); padding: 16px;">
-            <p class="error-text" style="margin-bottom: 12px; font-size: 0.85rem;">[!] DECRYPTION KEY REQUIRED TO READ THIS RECORD [!]</p>
-            <div class="input-line" style="margin-top: 0;">
-              <span class="prompt">KEY:_</span>
-              <input type="text" class="post-decrypt-input" data-post-id="${post.id}" autocomplete="off" style="background: transparent; border: none; color: var(--phosphor); font-family: inherit; font-size: 0.9rem; flex: 1; outline: none; caret-color: var(--phosphor-hot);" >
-            </div>
-            <p class="post-error-msg" id="error-post-${post.id}" style="display: none; color: #ff5555; font-size: 0.8rem; margin-top: 8px; font-weight: bold;">INVALID KEY. RECORDS REMAIN CORRUPT.</p>
+          <div class="entry-lock-box">
+            <p class="error-text">[!] DECRYPTION KEY REQUIRED TO READ THIS RECORD [!]</p>
+            <p class="lock-redirect">&gt;&gt; ENTER THE KEY VIA THE ACTIVE_PROBE TERMINAL &gt;&gt;</p>
           </div>
         </article>`;
     }
@@ -3600,46 +3652,6 @@ int main() {
         ${entry008Markup}
         ${mediaMarkup}
       </article>`;
-  }
-
-  function attachPostLockListeners() {
-    const inputs = document.querySelectorAll(".post-decrypt-input");
-    inputs.forEach(input => {
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          const postId = input.getAttribute("data-post-id");
-          const attempt = input.value.trim();
-          const posts = getPosts();
-          const targetPost = posts.find(p => p.id === postId);
-          const errorMsg = document.getElementById(`error-post-${postId}`);
-
-          if (targetPost && targetPost.postPassword && attempt === targetPost.postPassword) {
-            saveSolvedPostId(postId);
-            onPostDecrypted(postId);
-            renderPosts();
-            // A successful decrypt kicks off a burst of static.
-            new Audio(UI_BURST_PATH).play().catch(function () {});
-          } else {
-            input.value = "";
-            if (errorMsg) {
-              errorMsg.style.display = "block";
-              errorMsg.classList.remove("glitch-flash");
-              void errorMsg.offsetWidth;
-              errorMsg.classList.add("glitch-flash");
-            }
-          }
-        }
-      });
-
-      // Clicking anywhere on the lock box pulls focus into the key prompt,
-      // so the in-post command line is fully interactive.
-      const lockBox = input.closest(".entry-lock-box");
-      if (lockBox) {
-        lockBox.addEventListener("click", function (e) {
-          if (e.target !== input) input.focus();
-        });
-      }
-    });
   }
 
   // Half-second red screen stutter when the '@' reaches 6 clicks — reuses the
@@ -3709,7 +3721,6 @@ int main() {
       return a.date < b.date ? 1 : -1;
     });
     container.innerHTML = sorted.map(buildEntryMarkup).join("");
-    attachPostLockListeners();
     attachAtmosphereNoteListener();
     attachEntry008NoteListener();
   }

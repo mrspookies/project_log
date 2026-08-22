@@ -668,9 +668,12 @@ body.atmosphere #crt {
 
 /* The riddle terminal that gates ENTRY 001. Behaves like a real Linux
    terminal: header (label/riddle) on top, streaming history in the middle
-   that scrolls, and the interactive prompt anchored at the bottom. */
+   that scrolls, and the interactive prompt anchored at the bottom.
+   THE one input surface of the game: haunting commands AND every entry's
+   decryption key get typed here, so it wears a bright pulsing outline to
+   advertise itself as the place to click and type. */
 .clue-terminal {
-  border: 1px dashed var(--phosphor-dim);
+  border: 1px solid var(--phosphor);
   padding: 14px 16px;
   margin-bottom: 24px;
   display: flex;
@@ -678,6 +681,26 @@ body.atmosphere #crt {
   height: 100%;
   box-sizing: border-box;
   overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(51, 255, 102, 0.2),
+    0 0 22px rgba(51, 255, 102, 0.14),
+    inset 0 0 34px rgba(51, 255, 102, 0.05);
+  animation: clue-terminal-pulse 3s ease-in-out infinite;
+}
+
+@keyframes clue-terminal-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px rgba(51, 255, 102, 0.2),
+      0 0 22px rgba(51, 255, 102, 0.14),
+      inset 0 0 34px rgba(51, 255, 102, 0.05);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(51, 255, 102, 0.4),
+      0 0 32px rgba(51, 255, 102, 0.28),
+      inset 0 0 42px rgba(51, 255, 102, 0.09);
+  }
 }
 
 .clue-label {
@@ -736,6 +759,27 @@ body.atmosphere #crt {
 .clue-input-line input::placeholder {
   color: var(--phosphor-dim);
   opacity: 0.6;
+}
+
+/* Locked entries carry no key prompt of their own — all typed input lives
+   in the ACTIVE_PROBE terminal. This box just points the player at it. */
+.entry-lock-box {
+  margin-top: 15px;
+  border: 1px dashed var(--phosphor-dim);
+  padding: 16px;
+}
+
+.lock-redirect {
+  margin-top: 12px;
+  color: var(--phosphor-hot);
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  text-shadow: var(--text-glow);
+  animation: lock-redirect-blink 1.6s steps(2, jump-none) infinite;
+}
+
+@keyframes lock-redirect-blink {
+  50% { opacity: 0.45; }
 }
 
 .clue-board {
@@ -1710,5 +1754,10 @@ body.atmosphere #crt {
 
   .boot-spinner {
     animation-duration: 2.5s;
+  }
+
+  .clue-terminal,
+  .lock-redirect {
+    animation: none;
   }
 }
